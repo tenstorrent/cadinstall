@@ -119,13 +119,13 @@ else:
 
 # Set up the global variables for the rsync command
 rsync = '/usr/bin/rsync'
+curl = '/usr/bin/curl'
 rsync_options = "-av"
 
 # Set up the global variables for the jenkins job
-jenkins = '/usr/bin/java -jar /usr/share/jenkins/jenkins-cli.jar -s http://localhost:8080/ build'
-jenkins_job = 'cadinstall'
-jenkins_user = user
-jenkins_password = ""
+curl_cmd = curl + ' -X POST -L'
+jenkins_user = "bswan:11ce74b6c978b1484607c6c9168e085b44"
+jenkins_url = 'http://aus-rv-l-7:8081'
 
 # Set up the global variables for the destination directory
 dest = '/tools_vendor'
@@ -137,7 +137,9 @@ log_file = '/tmp/cadinstall.log'
 
 def run_command(command):
     log.info("Running command: %s" % command)
-    if not pretend:
+    if pretend:
+        log.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
+    else:
         try:
             subprocess.check_call(command, shell=True)
         except subprocess.CalledProcessError as e:
@@ -180,7 +182,8 @@ def main():
     if user != cadtools_user:
         log.info("Submitting job to jenkins ...")
         ## submit the job to jenkins
-        command = "%s %s -s -p %s" % (jenkins, jenkins_job, full_command)
+        command = "%s --user %s '%s/job/cadinstall/buildWithParameters?token=cadinstall&cadinstall_vendor=%s&cadinstall_tool=%s&cadinstall_version=%s&cadinstall_src=%s'" % (curl_cmd, jenkins_user, jenkins_url, vendor, tool, version, src)
+    
         run_command(command)
         sys.exit(0)
 
