@@ -84,10 +84,7 @@ install_parser.add_argument('--sites', dest="sites", required=False, help='The s
 install_parser.add_argument('--group', dest="group", default=cadtools_group, help='The group to own the destination directory')
 args = parser.parse_args()
 
-## show the help menu if no subcommand is provided
-if not args.subcommand:
-    parser.print_help()
-    sys.exit(1)
+
     
 # Set up the logging level
 if args.verbose:
@@ -103,19 +100,7 @@ if args.pretend:
 else:
     pretend = False
 
-# Set up the global variables for the install subcommand
-vendor = args.vendor
-tool = args.tool
-version = args.version
-src = args.src
-if args.sites:
-    sites = args.sites
-else:
-    sites = 'all'
-if args.group:
-    group = args.group
-else:
-    group = cadtools_group
+
 
 # Set up the global variables for the rsync command
 rsync = '/usr/bin/rsync'
@@ -168,7 +153,6 @@ def create_dest(dest):
         os.chown(dest, pwd.getpwnam(cadtools_user).pw_uid, grp.getgrnam(cadtools_group).gr_gid)
         os.chmod(dest, dest_mode)
 
-
 def install_tool(vendor, tool, version, src, sites, group):
     check_src(src)
     check_dest(dest)
@@ -178,6 +162,25 @@ def install_tool(vendor, tool, version, src, sites, group):
 
 
 def main():
+    ## show the help menu if no subcommand is provided
+    if not args.subcommand:
+        parser.print_help()
+        sys.exit(1)
+
+    # Set up the global variables for the install subcommand
+    vendor = args.vendor
+    tool = args.tool
+    version = args.version
+    src = args.src
+    if args.sites:
+        sites = args.sites
+    else:
+        sites = 'all'
+    if args.group:
+        group = args.group
+    else:
+        group = cadtools_group
+
     log.info("Running command: %s" % full_command)
     if user != cadtools_user:
         log.info("Submitting job to jenkins ...")
