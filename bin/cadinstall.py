@@ -40,7 +40,7 @@ global group
 # Define the global variables
 user = getpass.getuser()
 cadtools_user = 'cadtools'
-cadtools_group = 'cadtools'
+cadtools_group = 'tools_vendor'
 
 ## define the full path to this script
 script = os.path.realpath(__file__)
