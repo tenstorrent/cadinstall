@@ -1,3 +1,4 @@
+#!/usr/bin/python3
 ## This script is used to install tools from vendors
 ## This script has a complete help menu for each of the supported subcommands
 ## This script has the following subcommands: install
