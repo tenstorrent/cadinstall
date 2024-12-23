@@ -50,7 +50,7 @@ script = os.path.realpath(__file__)
 full_command = ' '.join(sys.argv)
 
 ## Set up the logging
-log_file = '/tmp/cadinstall.log'
+log_file = '/tmp/cadinstall.' + user + 'log'
 formatter = logging.Formatter('-%(levelname)s- %(asctime)s : %(message)s')
 
 ## Logfile handler
