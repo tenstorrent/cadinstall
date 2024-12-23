@@ -25,6 +25,7 @@ import subprocess
 import getpass
 import pwd
 import grp
+import socket
 
 # Set up the global variable
 global verbose
@@ -41,7 +42,7 @@ global group
 # Define the global variables
 user = getpass.getuser()
 cadtools_user = 'cadtools'
-cadtools_group = 'tools_vendor'
+cadtools_group = 'vendor_tools'
 
 ## define the full path to this script
 script = os.path.realpath(__file__)
@@ -105,8 +106,9 @@ else:
 
 # Set up the global variables for the rsync command
 rsync = '/usr/bin/rsync'
+mkdir = '/usr/bin/mkdir'
 curl = '/usr/bin/curl'
-rsync_options = "-av"
+rsync_options = "-av --chmod=u+rwx,g+rx,o=rx"
 
 # Set up the global variables for the jenkins job
 curl_cmd = curl + ' -X POST -L'
@@ -114,9 +116,9 @@ jenkins_user = "bswan:11ce74b6c978b1484607c6c9168e085b44"
 jenkins_url = 'http://aus-rv-l-7:8081'
 
 # Set up the global variables for the destination directory
-dest = '/tools_vendor'
+dest = '/tmp/tools_vendor'
 dest_group = 'cadtools'
-dest_mode = 0o755
+dest_mode = 2755
 
 # Set up the global variables for the log file
 log_file = '/tmp/cadinstall.log'
@@ -149,16 +151,15 @@ def check_dest(dest):
 
 def create_dest(dest):
     log.info("Creating destination directory: %s" % dest)
-    if not pretend:
-        os.makedirs(dest, mode=dest_mode)
-        os.chown(dest, pwd.getpwnam(cadtools_user).pw_uid, grp.getgrnam(cadtools_group).gr_gid)
-        os.chmod(dest, dest_mode)
+    command = "%s -p -m %s %s" % (mkdir, dest_mode, dest)
+    run_command(command)
 
-def install_tool(vendor, tool, version, src, sites, group):
+def install_tool(vendor, tool, version, src, group, dest_host):
     check_src(src)
-    check_dest(dest)
-    create_dest(dest)
-    command = "%s %s %s %s %s %s %s %s" % (rsync, rsync_options, src, dest, vendor, tool, version, group)
+    final_dest = "%s/%s/%s/%s" % (dest, vendor, tool, version)
+    check_dest(final_dest)
+    create_dest(final_dest)
+    command = "%s %s --groupmap=\"*:%s\" --rsync-path='%s -p %s && %s' %s/ %s@%s:%s/" % (rsync, rsync_options, cadtools_group, mkdir, final_dest, rsync, src, cadtools_user, dest_host, final_dest)
     run_command(command)
 
 
@@ -192,7 +193,8 @@ def main():
         sys.exit(0)
 
     if args.subcommand == 'install':
-        install_tool(vendor, tool, version, src, sites, group)
+        dest_host = socket.getfqdn()
+        install_tool(vendor, tool, version, src, group, dest_host)
     else:
         parser.print_help()
         sys.exit(1)
