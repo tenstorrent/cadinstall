@@ -36,13 +36,19 @@ global vendor
 global tool
 global version
 global src
-global sites
+global sitesList
 global group
 
 # Define the global variables
 user = getpass.getuser()
 cadtools_user = 'cadtools'
 cadtools_group = 'vendor_tools'
+
+## define a hash for machines per site
+siteHash = {
+    'aus': ['rv-misc-01.aus2.tenstorrent.com'],
+    'yyz': ['soc-l-01.yyz2.tenstorrent.com']
+}
 
 ## define the full path to this script
 script = os.path.realpath(__file__)
@@ -82,12 +88,17 @@ install_parser.add_argument('--vendor', '-v', dest="vendor", required=True, help
 install_parser.add_argument('--tool', '-t', dest="tool", required=True, help='The tool to install')
 install_parser.add_argument('--version', '-ver', dest="version", required=True, help='The version of the tool to install')
 install_parser.add_argument('--src', dest="src", required=True, help='The source directory of the tool')
-install_parser.add_argument('--sites', dest="sites", required=False, help='The sites to install the tool to')
+install_parser.add_argument('--sites', type=str, required=False, help='The sites to install the tool to. Valid values: aus, yyz')
 install_parser.add_argument('--group', dest="group", default=cadtools_group, help='The group to own the destination directory')
 args = parser.parse_args()
 
+if args.sites:
+    sitesList = args.sites.split(",")
+else:
+    sitesList = []
+    for site in siteHash:
+        sitesList.append(site)
 
-    
 # Set up the logging level
 if args.verbose:
     log.setLevel(logging.INFO)
@@ -102,8 +113,6 @@ if args.pretend:
 else:
     pretend = False
 
-
-
 # Set up the global variables for the rsync command
 rsync = '/usr/bin/rsync'
 mkdir = '/usr/bin/mkdir'
@@ -116,7 +125,8 @@ jenkins_user = "bswan:11ce74b6c978b1484607c6c9168e085b44"
 jenkins_url = 'http://aus-rv-l-7:8081'
 
 # Set up the global variables for the destination directory
-dest = '/tmp/tools_vendor'
+#dest = '/tmp/tools_vendor'
+dest = '/tools_vendor'
 dest_group = 'cadtools'
 dest_mode = 2755
 
@@ -157,11 +167,17 @@ def create_dest(dest):
 def install_tool(vendor, tool, version, src, group, dest_host):
     check_src(src)
     final_dest = "%s/%s/%s/%s" % (dest, vendor, tool, version)
-    check_dest(final_dest)
-    create_dest(final_dest)
-    command = "%s %s --groupmap=\"*:%s\" --rsync-path='%s -p %s && %s' %s/ %s@%s:%s/" % (rsync, rsync_options, cadtools_group, mkdir, final_dest, rsync, src, cadtools_user, dest_host, final_dest)
-    run_command(command)
 
+    check_dest(final_dest)
+    ## Don't need to do this anymore since it's taken care of in the rsync command
+    ##create_dest(final_dest)
+    
+    for site in sitesList:
+        log.info("Installing to %s ..." % site)
+        ## foreach machine in the site
+        for dest_host in siteHash[site]:
+            command = "%s %s --groupmap=\"*:%s\" --rsync-path='%s -p %s && %s' %s/ %s@%s:%s/" % (rsync, rsync_options, cadtools_group, mkdir, final_dest, rsync, src, cadtools_user, dest_host, final_dest)
+            run_command(command)
 
 def main():
     ## show the help menu if no subcommand is provided
