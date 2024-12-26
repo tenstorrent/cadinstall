@@ -41,13 +41,14 @@ global group
 
 # Define the global variables
 user = getpass.getuser()
+host = socket.getfqdn()
 cadtools_user = 'cadtools'
 cadtools_group = 'vendor_tools'
 
 ## define a hash for machines per site
 siteHash = {
-    'aus': ['rv-misc-01.aus2.tenstorrent.com'],
-    'yyz': ['soc-l-01.yyz2.tenstorrent.com']
+    'aus': 'rv-misc-01.aus2.tenstorrent.com',
+    'yyz': 'soc-l-01.yyz2.tenstorrent.com'
 }
 
 ## define the full path to this script
@@ -57,7 +58,7 @@ script = os.path.realpath(__file__)
 full_command = ' '.join(sys.argv)
 
 ## Set up the logging
-log_file = '/tmp/cadinstall.' + user + 'log'
+log_file = '/tmp/cadinstall.' + user + '.log'
 formatter = logging.Formatter('-%(levelname)s- %(asctime)s : %(message)s')
 
 ## Logfile handler
@@ -130,60 +131,107 @@ dest = '/tools_vendor'
 dest_group = 'cadtools'
 dest_mode = 2755
 
-# Set up the global variables for the log file
-log_file = '/tmp/cadinstall.log'
-
 def run_command(command):
     log.info("Running command: %s" % command)
     if pretend:
         log.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
     else:
         try:
-            subprocess.check_call(command, shell=True)
+#            subprocess.check_call(command, shell=True)
+            result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if result.stdout:
+                log.info("%s" % result.stdout.decode('utf-8'))
+            if result.stderr:
+                log.error("%s" % result.stderr.decode('utf-8'))
+
         except subprocess.CalledProcessError as e:
             log.error("Error running command: %s" % command)
             log.error("Error message: %s" % e)
             sys.exit(1)
 
+def run_command2(command):
+    log.info("Running command: %s" % command)
+    if isinstance(command, str):
+        log.info("Converting command to a list ...")
+        command2 = command.split()
+        command = command2
+    log.info("Running command: %s" % command)
 
+    if pretend:
+        log.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
+    else:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+        while process.poll() is None:
+            stdout_line = process.stdout.readline()
+            stderr_line = process.stderr.readline()
+
+            if stdout_line:
+                log.info(stdout_line.decode().strip())
+            if stderr_line:
+                log.error(stderr_line.decode().strip())
+
+            # Read any remaining output
+            stdout_remaining = process.stdout.read()
+            stderr_remaining = process.stderr.read()
+
+            if stdout_remaining:
+                log.info(stdout_remaining.decode().strip())
+            if stderr_remaining:
+                log.error(stderr_remaining.decode().strip())
+
+            return_code = process.returncode
+            log.info("Return code: %s" % return_code)
 
 def check_src(src):
     if not os.path.exists(src):
         log.error("Source directory does not exist: %s" % src)
         sys.exit(1)
 
-
-def check_dest(dest):
-    if os.path.exists(dest):
-        log.error("Destination directory already exists: %s" % dest)
-        sys.exit(1)
-
-
-def create_dest(dest):
-    log.info("Creating destination directory: %s" % dest)
-    command = "%s -p -m %s %s" % (mkdir, dest_mode, dest)
-    run_command(command)
+def check_dest(dest, host=None):
+    if host:
+        log.info("Checking %s for %s ..." % (host, dest))
+        command = "ls -ltrd " + dest
+        ssh = subprocess.Popen(["ssh", "%s" % host, command],
+                       shell=False,
+                       stdout=subprocess.PIPE,
+                       stderr=subprocess.PIPE)
+        result = ssh.stdout.readlines()
+        if result:
+            log.error("Destination directory already exists on %s : %s" % (host,dest))
+            sys.exit(1)
+    else:
+        if os.path.exists(dest):
+            log.error("Destination directory already exists: %s" % dest)
+            sys.exit(1)
 
 def install_tool(vendor, tool, version, src, group, dest_host):
     check_src(src)
     final_dest = "%s/%s/%s/%s" % (dest, vendor, tool, version)
 
-    check_dest(final_dest)
-    ## Don't need to do this anymore since it's taken care of in the rsync command
-    ##create_dest(final_dest)
-    
     for site in sitesList:
-        log.info("Installing to %s ..." % site)
-        ## foreach machine in the site
-        for dest_host in siteHash[site]:
-            command = "%s %s --groupmap=\"*:%s\" --rsync-path='%s -p %s && %s' %s/ %s@%s:%s/" % (rsync, rsync_options, cadtools_group, mkdir, final_dest, rsync, src, cadtools_user, dest_host, final_dest)
-            run_command(command)
+        dest_host = siteHash[site]
+        check_dest(final_dest, dest_host)
+    
+        log.info("Installing %s/%s/%s to %s ..." % (vendor,tool,version,site))
+
+        command = "%s %s --groupmap=\"*:%s\" --rsync-path=\'%s -p %s && %s\' %s/ %s@%s:%s/" % (rsync, rsync_options, cadtools_group, mkdir, final_dest, rsync, src, cadtools_user, dest_host, final_dest)
+        run_command(command)
+        #run_command2(command)
+
+        ## Now that one site is done, change the source to the installed site so that we are ensuring all sites are equivalent
+        src = final_dest
 
 def main():
     ## show the help menu if no subcommand is provided
     if not args.subcommand:
         parser.print_help()
         sys.exit(1)
+
+    log.info("User    : %s" % user)
+    log.info("Host    : %s" % host)
+    log.info("Cmdline : %s" % full_command)
+    log.info("Logfile : %s" % log_file)
 
     # Set up the global variables for the install subcommand
     vendor = args.vendor
@@ -209,8 +257,7 @@ def main():
         sys.exit(0)
 
     if args.subcommand == 'install':
-        dest_host = socket.getfqdn()
-        install_tool(vendor, tool, version, src, group, dest_host)
+        install_tool(vendor, tool, version, src, group, host)
     else:
         parser.print_help()
         sys.exit(1)
