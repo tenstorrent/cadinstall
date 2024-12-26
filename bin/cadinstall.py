@@ -45,6 +45,21 @@ host = socket.getfqdn()
 cadtools_user = 'cadtools'
 cadtools_group = 'vendor_tools'
 
+#dest = '/tmp/tools_vendor'
+dest = '/tools_vendor'
+dest_group = 'cadtools'
+dest_mode = 2755
+
+rsync = '/usr/bin/rsync'
+mkdir = '/usr/bin/mkdir'
+curl = '/usr/bin/curl'
+rsync_options = "-av --chmod=u+rwx,g+rx,o=rx"
+
+# Set up the global variables for the jenkins job
+curl_cmd = curl + ' -X POST -L'
+jenkins_user = "bswan:11ce74b6c978b1484607c6c9168e085b44"
+jenkins_url = 'http://aus-rv-l-7:8081'
+
 ## define a hash for machines per site
 siteHash = {
     'aus': 'rv-misc-01.aus2.tenstorrent.com',
@@ -114,71 +129,18 @@ if args.pretend:
 else:
     pretend = False
 
-# Set up the global variables for the rsync command
-rsync = '/usr/bin/rsync'
-mkdir = '/usr/bin/mkdir'
-curl = '/usr/bin/curl'
-rsync_options = "-av --chmod=u+rwx,g+rx,o=rx"
-
-# Set up the global variables for the jenkins job
-curl_cmd = curl + ' -X POST -L'
-jenkins_user = "bswan:11ce74b6c978b1484607c6c9168e085b44"
-jenkins_url = 'http://aus-rv-l-7:8081'
-
-# Set up the global variables for the destination directory
-#dest = '/tmp/tools_vendor'
-dest = '/tools_vendor'
-dest_group = 'cadtools'
-dest_mode = 2755
-
 def run_command(command):
     log.info("Running command: %s" % command)
-    if pretend:
-        log.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
-    else:
-        try:
-#            subprocess.check_call(command, shell=True)
-            result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            if result.stdout:
-                log.info("%s" % result.stdout.decode('utf-8'))
-            if result.stderr:
-                log.error("%s" % result.stderr.decode('utf-8'))
-
-        except subprocess.CalledProcessError as e:
-            log.error("Error running command: %s" % command)
-            log.error("Error message: %s" % e)
-            sys.exit(1)
-
-def run_command2(command):
-    log.info("Running command: %s" % command)
-    if isinstance(command, str):
-        log.info("Converting command to a list ...")
-        command2 = command.split()
-        command = command2
-    log.info("Running command: %s" % command)
 
     if pretend:
         log.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
     else:
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-        while process.poll() is None:
-            stdout_line = process.stdout.readline()
-            stderr_line = process.stderr.readline()
-
-            if stdout_line:
-                log.info(stdout_line.decode().strip())
-            if stderr_line:
-                log.error(stderr_line.decode().strip())
-
-            # Read any remaining output
-            stdout_remaining = process.stdout.read()
-            stderr_remaining = process.stderr.read()
-
-            if stdout_remaining:
-                log.info(stdout_remaining.decode().strip())
-            if stderr_remaining:
-                log.error(stderr_remaining.decode().strip())
+        from subprocess import PIPE, Popen
+        with Popen(command, shell=True, stdout=PIPE, stderr=PIPE, bufsize=1) as process:
+            for line in process.stdout:
+                log.info(line.decode('utf-8').rstrip())
+            for line in process.stderr:
+                log.error(line.decode('utf-8').rstrip())
 
             return_code = process.returncode
             log.info("Return code: %s" % return_code)
@@ -217,7 +179,6 @@ def install_tool(vendor, tool, version, src, group, dest_host):
 
         command = "%s %s --groupmap=\"*:%s\" --rsync-path=\'%s -p %s && %s\' %s/ %s@%s:%s/" % (rsync, rsync_options, cadtools_group, mkdir, final_dest, rsync, src, cadtools_user, dest_host, final_dest)
         run_command(command)
-        #run_command2(command)
 
         ## Now that one site is done, change the source to the installed site so that we are ensuring all sites are equivalent
         src = final_dest
@@ -247,7 +208,6 @@ def main():
     else:
         group = cadtools_group
 
-    log.info("Running command: %s" % full_command)
     if user != cadtools_user:
         log.info("Submitting job to jenkins ...")
         ## submit the job to jenkins
