@@ -22,6 +22,7 @@ import sys
 import argparse
 import pwd
 import grp
+import re
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)) + '/..')
 import lib.log
@@ -120,8 +121,11 @@ def main():
             final_dest = "%s/%s/%s/%s" % (dest, vendor, tool, version)
             logger.info("Installing %s to %s ..." %(final_dest,site))
             install_tool(vendor, tool, version, src, group, dest_host, final_dest)
+
             ## Now that one site is done, change the source to the installed site so that we are ensuring all sites are equivalent
-            src = final_dest
+            ## But don't do this if the final_dest is on tmp because that won't be accessible
+            if not re.search("^/tmp", final_dest):
+                src = final_dest
 
     else:
         parser.print_help()
