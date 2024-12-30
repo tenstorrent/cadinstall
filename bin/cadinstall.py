@@ -20,51 +20,15 @@
 import os
 import sys
 import argparse
-import logging
-import subprocess
-import getpass
 import pwd
 import grp
-import socket
 
-# Set up the global variable
-global verbose
-global vv
-global quiet
-global pretend
-global vendor
-global tool
-global version
-global src
-global sitesList
-global group
-
-# Define the global variables
-user = getpass.getuser()
-host = socket.getfqdn()
-cadtools_user = 'cadtools'
-cadtools_group = 'vendor_tools'
-
-#dest = '/tmp/tools_vendor'
-dest = '/tools_vendor'
-dest_group = 'cadtools'
-dest_mode = 2755
-
-rsync = '/usr/bin/rsync'
-mkdir = '/usr/bin/mkdir'
-curl = '/usr/bin/curl'
-rsync_options = "-av --chmod=u+rwx,g+rx,o=rx"
-
-# Set up the global variables for the jenkins job
-curl_cmd = curl + ' -X POST -L'
-jenkins_user = "bswan:11ce74b6c978b1484607c6c9168e085b44"
-jenkins_url = 'http://aus-rv-l-7:8081'
-
-## define a hash for machines per site
-siteHash = {
-    'aus': 'rv-misc-01.aus2.tenstorrent.com',
-    'yyz': 'soc-l-01.yyz2.tenstorrent.com'
-}
+sys.path.append(os.path.dirname(os.path.realpath(__file__)) + '/..')
+import lib.log
+import lib.my_globals
+from lib.tool_defs import *
+from lib.utils import *
+from lib.install import *
 
 ## define the full path to this script
 script = os.path.realpath(__file__)
@@ -72,32 +36,15 @@ script = os.path.realpath(__file__)
 ## define the full path to this script along with all of the arguments used in it's invocation
 full_command = ' '.join(sys.argv)
 
-## Set up the logging
 log_file = '/tmp/cadinstall.' + user + '.log'
-formatter = logging.Formatter('-%(levelname)s- %(asctime)s : %(message)s')
-
-## Logfile handler
-file_handler = logging.FileHandler(log_file, mode='w')
-file_handler.setLevel(logging.INFO)
-file_handler.setFormatter(formatter)
-
-# Console handler
-console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO) # Different level possible
-console_handler.setFormatter(formatter)
-
-## now set up the message logger
-log = logging.getLogger(log_file)
-log.setLevel(logging.DEBUG) # Set the minimum log level
-log.addHandler(file_handler)
-log.addHandler(console_handler)
+logger = lib.log.setup_custom_logger('cadinstall', log_file)
 
 # Set up the argument parser
 parser = argparse.ArgumentParser(description='Install tools from vendors')
 parser.add_argument('--verbose', '-v', action='store_true', help='Print all output to the console and the log file')
 parser.add_argument('--vv', action='store_true', help='Print all output to the console and the log file, but also print out the commands that are being run')
 parser.add_argument('--quiet', '-q', action='store_true', help='Suppress all output to the console except for errors. Print all output to the log file')
-parser.add_argument('--pretend', '-p', dest="pretend", action='store_true', help='Print out the command that would be run, but do not actually run the command')
+parser.add_argument('--pretend', '-p', action='store_true', help='Print out the command that would be run, but do not actually run the command')
 subparsers = parser.add_subparsers(dest='subcommand', help='Subcommands')
 install_parser = subparsers.add_parser('install', help='Install a tool')
 install_parser.add_argument('--vendor', '-v', dest="vendor", required=True, help='The vendor of the tool')
@@ -117,71 +64,22 @@ else:
 
 # Set up the logging level
 if args.verbose:
-    log.setLevel(logging.INFO)
-elif args.vv:
-    log.setLevel(logging.DEBUG)
-elif args.quiet:
-    log.setLevel(logging.ERROR)
+    logger.setLevel(logging.INFO)
+    lib.my_globals.set_verbose(True)
+if args.vv:
+    lib.my_globals.set_vv(True)
+    logger.setLevel(logging.DEBUG)
+if args.quiet:
+    lib.my_globals.set_quiet(True)
+    lib.my_globals.set_verbose(False)
+    lib.my_globals.set_vv(False)
+    logger.setLevel(logging.ERROR)
 
 # Set up the pretend switch
 if args.pretend:
-    pretend = True
+    lib.my_globals.set_pretend(True)
 else:
-    pretend = False
-
-def run_command(command):
-    log.info("Running command: %s" % command)
-
-    if pretend:
-        log.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
-    else:
-        from subprocess import PIPE, Popen
-        with Popen(command, shell=True, stdout=PIPE, stderr=PIPE, bufsize=1) as process:
-            for line in process.stdout:
-                log.info(line.decode('utf-8').rstrip())
-            for line in process.stderr:
-                log.error(line.decode('utf-8').rstrip())
-
-            return_code = process.returncode
-            log.info("Return code: %s" % return_code)
-
-def check_src(src):
-    if not os.path.exists(src):
-        log.error("Source directory does not exist: %s" % src)
-        sys.exit(1)
-
-def check_dest(dest, host=None):
-    if host:
-        log.info("Checking %s for %s ..." % (host, dest))
-        command = "ls -ltrd " + dest
-        ssh = subprocess.Popen(["ssh", "%s" % host, command],
-                       shell=False,
-                       stdout=subprocess.PIPE,
-                       stderr=subprocess.PIPE)
-        result = ssh.stdout.readlines()
-        if result:
-            log.error("Destination directory already exists on %s : %s" % (host,dest))
-            sys.exit(1)
-    else:
-        if os.path.exists(dest):
-            log.error("Destination directory already exists: %s" % dest)
-            sys.exit(1)
-
-def install_tool(vendor, tool, version, src, group, dest_host):
-    check_src(src)
-    final_dest = "%s/%s/%s/%s" % (dest, vendor, tool, version)
-
-    for site in sitesList:
-        dest_host = siteHash[site]
-        check_dest(final_dest, dest_host)
-    
-        log.info("Installing %s/%s/%s to %s ..." % (vendor,tool,version,site))
-
-        command = "%s %s --groupmap=\"*:%s\" --rsync-path=\'%s -p %s && %s\' %s/ %s@%s:%s/" % (rsync, rsync_options, cadtools_group, mkdir, final_dest, rsync, src, cadtools_user, dest_host, final_dest)
-        run_command(command)
-
-        ## Now that one site is done, change the source to the installed site so that we are ensuring all sites are equivalent
-        src = final_dest
+    lib.my_globals.set_pretend(False)
 
 def main():
     ## show the help menu if no subcommand is provided
@@ -189,10 +87,10 @@ def main():
         parser.print_help()
         sys.exit(1)
 
-    log.info("User    : %s" % user)
-    log.info("Host    : %s" % host)
-    log.info("Cmdline : %s" % full_command)
-    log.info("Logfile : %s" % log_file)
+    logger.info("User    : %s" % user)
+    logger.info("Host    : %s" % host)
+    logger.info("Cmdline : %s" % full_command)
+    logger.info("Logfile : %s" % log_file)
 
     # Set up the global variables for the install subcommand
     vendor = args.vendor
@@ -209,15 +107,21 @@ def main():
         group = cadtools_group
 
     if user != cadtools_user:
-        log.info("Submitting job to jenkins ...")
+        logger.info("Submitting job to jenkins ...")
         ## submit the job to jenkins
         command = "%s --user %s '%s/job/cadinstall/buildWithParameters?token=cadinstall&cadinstall_vendor=%s&cadinstall_tool=%s&cadinstall_version=%s&cadinstall_src=%s'" % (curl_cmd, jenkins_user, jenkins_url, vendor, tool, version, src)
     
-        run_command(command)
+        run_command(command, lib.my_globals.get_pretend())
         sys.exit(0)
 
     if args.subcommand == 'install':
-        install_tool(vendor, tool, version, src, group, host)
+        for site in sitesList:
+            dest_host = siteHash[site]
+            final_dest = "%s/%s/%s/%s" % (dest, vendor, tool, version)
+            install_tool(vendor, tool, version, src, group, host, final_dest)
+            ## Now that one site is done, change the source to the installed site so that we are ensuring all sites are equivalent
+            src = final_dest
+
     else:
         parser.print_help()
         sys.exit(1)
