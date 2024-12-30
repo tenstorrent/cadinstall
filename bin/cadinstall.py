@@ -118,7 +118,8 @@ def main():
         for site in sitesList:
             dest_host = siteHash[site]
             final_dest = "%s/%s/%s/%s" % (dest, vendor, tool, version)
-            install_tool(vendor, tool, version, src, group, host, final_dest)
+            logger.info("Installing %s to %s ..." %(final_dest,site))
+            install_tool(vendor, tool, version, src, group, dest_host, final_dest)
             ## Now that one site is done, change the source to the installed site so that we are ensuring all sites are equivalent
             src = final_dest
 
