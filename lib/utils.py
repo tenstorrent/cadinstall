@@ -31,6 +31,7 @@ def check_src(src):
         sys.exit(1)
 
 def check_dest(dest, host=None):
+    exists = 0
     if host:
         logger.info("Checking %s for %s ..." % (host, dest))
         command = "ls -ltrd " + dest
@@ -41,10 +42,11 @@ def check_dest(dest, host=None):
         result = ssh.stdout.readlines()
         if result:
             logger.error("Destination directory already exists on %s : %s" % (host,dest))
+            exists=1
             sys.exit(1)
     else:
         if os.path.exists(dest):
             logger.error("Destination directory already exists: %s" % dest)
-            sys.exit(1)
+            exists=1
 
-
+    return(exists)
