@@ -46,6 +46,7 @@ parser.add_argument('--verbose', '-v', action='store_true', help='Print all outp
 parser.add_argument('--vv', action='store_true', help='Print all output to the console and the log file, but also print out the commands that are being run')
 parser.add_argument('--quiet', '-q', action='store_true', help='Suppress all output to the console except for errors. Print all output to the log file')
 parser.add_argument('--pretend', '-p', action='store_true', help='Print out the command that would be run, but do not actually run the command')
+parser.add_argument('--force', '-f', action='store_true', help='Forces the installation despite any warnings/errors such as the destination already existing')
 subparsers = parser.add_subparsers(dest='subcommand', help='Subcommands')
 install_parser = subparsers.add_parser('install', help='Install a tool')
 install_parser.add_argument('--vendor', '-v', dest="vendor", required=True, help='The vendor of the tool')
@@ -81,6 +82,9 @@ if args.pretend:
     lib.my_globals.set_pretend(True)
 else:
     lib.my_globals.set_pretend(False)
+
+if args.force:
+    lib.my_globals.set_force(True)
 
 def main():
     ## show the help menu if no subcommand is provided

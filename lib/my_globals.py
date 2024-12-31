@@ -2,6 +2,11 @@ verbose=True
 vv=False
 quiet=False
 pretend=False
+force=False
+
+def set_force(value):
+    global force
+    force=value
 
 def set_verbose(value):
     global verbose
@@ -21,6 +26,9 @@ def set_quiet(value):
 def set_pretend(value):
     global pretend
     pretend=value
+
+def get_force():
+    return(force)
 
 def get_verbose():
     return(verbose)
