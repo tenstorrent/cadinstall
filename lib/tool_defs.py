@@ -13,8 +13,8 @@ host = socket.getfqdn()
 cadtools_user = 'cadtools'
 cadtools_group = 'vendor_tools'
 
-dest = '/tmp/tools_vendor'
-#dest = '/tools_vendor'
+#dest = '/tmp/tools_vendor'
+dest = '/tools_vendor'
 dest_group = 'cadtools'
 dest_mode = 2755
 
