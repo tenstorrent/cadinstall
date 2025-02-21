@@ -7,6 +7,8 @@ import lib.my_globals
 logger = logging.getLogger('cadinstall')
 
 def run_command(command, pretend=False):
+    sudo = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../bin/.sudo ')
+
     logger.info("Running command: %s" % command)
 
     pretend = lib.my_globals.get_pretend()
@@ -14,6 +16,8 @@ def run_command(command, pretend=False):
     if pretend:
         logger.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
     else:
+        command = sudo + command
+
         from subprocess import PIPE, Popen
         with Popen(command, shell=True, stdout=PIPE, stderr=PIPE, bufsize=1) as process:
             for line in process.stdout:

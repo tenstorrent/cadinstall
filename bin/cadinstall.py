@@ -111,13 +111,9 @@ def main():
     else:
         group = cadtools_group
 
-    if user != cadtools_user:
-        logger.info("Submitting job to jenkins ...")
-        ## submit the job to jenkins
-        command = "%s --user %s '%s/job/cadinstall/buildWithParameters?token=cadinstall&cadinstall_vendor=%s&cadinstall_tool=%s&cadinstall_version=%s&cadinstall_src=%s'" % (curl_cmd, jenkins_user, jenkins_url, vendor, tool, version, src)
-    
-        run_command(command, lib.my_globals.get_pretend())
-        sys.exit(0)
+    if user == cadtools_user:
+        logger.error("This command cannot be run directly by %s. Please rerun as another user.\n" %(cadtools_user))
+        sys.exit(1)
 
     if args.subcommand == 'install':
         for site in sitesList:
