@@ -1,2 +1,3 @@
 /usr/bin/whoami
-ls
+/usr/bin/rsync
+/usr/bin/mkdir
