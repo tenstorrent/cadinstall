@@ -16,11 +16,14 @@ def run_command(command, pretend=False):
     else:
         sudo_command = command
         ## Prefix every instance of '/usr/bin/mkdir' in sudo_command with sudo
-        sudo_command = sudo_command.replace('/usr/bin/mkdir', sudo + ' /usr/bin/mkdir')
+        sudo_command = sudo_command.replace('/usr/bin/mkdir', sudo + '/usr/bin/mkdir')
         ## Prefix every instance of '/usr/bin/rsync' in sudo_command with sudo 
-        sudo_command = sudo_command.replace('/usr/bin/rsync', sudo + ' /usr/bin/rsync')
+        sudo_command = sudo_command.replace('/usr/bin/rsync', sudo + '/usr/bin/rsync')
 
-        logger.info("Running command: %s" % command)
+        if lib.my_globals.get_vv():
+            logger.info("Running sudo_command: %s" % sudo_command)
+        else:
+            logger.info("Running command: %s" % command)
 
         from subprocess import PIPE, Popen
         #with Popen(command, shell=True, stdout=PIPE, stderr=PIPE, bufsize=1) as process:
