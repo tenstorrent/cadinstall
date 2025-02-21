@@ -21,7 +21,7 @@ def run_command(command, pretend=False):
         sudo_command = sudo_command.replace('/usr/bin/rsync', sudo + ' /usr/bin/rsync')
 
         logger.info("Running command: %s" % command)
-        exit(1)
+
         from subprocess import PIPE, Popen
         #with Popen(command, shell=True, stdout=PIPE, stderr=PIPE, bufsize=1) as process:
         with Popen(sudo_command, shell=True, stdout=PIPE, stderr=PIPE, bufsize=1) as process:
