@@ -16,7 +16,7 @@ def install_tool(vendor, tool, version, src, group, dest_host, dest):
     
     logger.info("Copying %s/%s/%s to %s ..." % (vendor,tool,version,dest_host))
 
-    command = "%s %s --groupmap=\"*:%s\" --rsync-path=\'%s -p %s && %s\' %s/ %s@%s:%s/" % (rsync, rsync_options, cadtools_group, mkdir, dest, rsync, src, cadtools_user, dest_host, dest)
+    command = "%s %s --groupmap=\"*:%s\" --rsync-path=\'%s -p %s && %s\' %s/ %s:%s/" % (rsync, rsync_options, cadtools_group, mkdir, dest, rsync, src, dest_host, dest)
     run_command(command, lib.my_globals.pretend)
 
 
