@@ -8,19 +8,28 @@
 #include <unistd.h>
 
 #define MAX_COMMAND_LENGTH 4096
-#define ALLOWED_COMMANDS_FILE "./allowed_commands"
+#define ALLOWED_COMMANDS_FILE "../etc/allowed_commands"
 
 int main(int argc, char *argv[]) {
     char command[MAX_COMMAND_LENGTH];
+
+    strcpy(command, "");
+    int i;
+    for (i=1; i<argc; i++)
+    {
+        strcat(command, argv[i]);
+        strcat(command, " ");
+    }
+    
     FILE *allowed_commands_file;
     char allowed_command[MAX_COMMAND_LENGTH];
     int allowed = 0;
 
-    if (argc != 2) {
+    if (argc < 2) {
         fprintf(stderr, "Usage: %s <command>\n", argv[0]);
         exit(1);
     }
-
+    
     // Check if the allowed_commands file exists
     if (access(ALLOWED_COMMANDS_FILE, F_OK) == -1) {
         fprintf(stderr, "Allowed commands file does not exist: %s\n", ALLOWED_COMMANDS_FILE);
@@ -51,15 +60,14 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    snprintf(command, MAX_COMMAND_LENGTH, "%s", argv[1]);
     system(command);
 
     return 0;
 }
 
 /* The program should be compiled with the following command:
- gcc -o ../bin/sudo sudo.c
+ gcc -o ../bin/.sudo sudo.c
  The program should be owned by cadtools and have the setuid bit set.
- chown cadtools:cadtools ../bin/sudo
- chmod 4755 ../bin/sudo
+ sudo chown cadtools:vendor_tools ../bin/.sudo
+ sudo chmod 4755 ../bin/.sudo
 */
