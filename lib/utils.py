@@ -9,17 +9,22 @@ logger = logging.getLogger('cadinstall')
 def run_command(command, pretend=False):
     sudo = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../bin/.sudo ')
 
-    logger.info("Running command: %s" % command)
-
     pretend = lib.my_globals.get_pretend()
 
     if pretend:
         logger.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
     else:
-        command = sudo + command
+        sudo_command = command
+        ## Prefix every instance of '/usr/bin/mkdir' in sudo_command with sudo
+        sudo_command = sudo_command.replace('/usr/bin/mkdir', sudo + ' /usr/bin/mkdir')
+        ## Prefix every instance of '/usr/bin/rsync' in sudo_command with sudo 
+        sudo_command = sudo_command.replace('/usr/bin/rsync', sudo + ' /usr/bin/rsync')
 
+        logger.info("Running command: %s" % command)
+        exit(1)
         from subprocess import PIPE, Popen
-        with Popen(command, shell=True, stdout=PIPE, stderr=PIPE, bufsize=1) as process:
+        #with Popen(command, shell=True, stdout=PIPE, stderr=PIPE, bufsize=1) as process:
+        with Popen(sudo_command, shell=True, stdout=PIPE, stderr=PIPE, bufsize=1) as process:
             for line in process.stdout:
                 logger.info(line.decode('utf-8').rstrip())
             for line in process.stderr:
