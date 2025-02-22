@@ -7,7 +7,7 @@
 #define MAX_COMMAND_LENGTH 4096
 #define MAX_OUTPUT_LENGTH 4096
 // im not sure if i like this strategy - it might be better practice to actually hardcode the list. need to chew on it some more
-#define ALLOWED_COMMANDS_FILE "/proj_risc/user_dev/bswan/tools_src/cadinstall/etc/allowed_commands"
+#define ALLOWED_COMMANDS_FILE "/tools_vendor/FOSS/cadinstall/latest/etc/allowed_commands"
 
 int main(int argc, char *argv[]) {
     char *command;
