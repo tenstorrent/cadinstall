@@ -1,7 +1,3 @@
-// Create a c program that will execute the command passed as an argument with the effective user id of the owner of the file.
-// The command passed in must be checked against a whitelist of allowed commands so as to prevent abuse
-// The whitelist should be stored in a file called /etc/allowed_commands
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -10,6 +6,7 @@
 
 #define MAX_COMMAND_LENGTH 4096
 #define MAX_OUTPUT_LENGTH 4096
+// im not sure if i like this strategy - it might be better practice to actually hardcode the list. need to chew on it some more
 #define ALLOWED_COMMANDS_FILE "/proj_risc/user_dev/bswan/tools_src/cadinstall/etc/allowed_commands"
 
 int main(int argc, char *argv[]) {
@@ -66,14 +63,26 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    execvp(command, arguments);
+    /*
+     Now that we're done with all the pre-work, let's get to the good stuff
+     First get the euid - ie, the owner of the binary that has the setuid bit defined.
+     Without this bit of magic, anything that depends on "id" (such as ssh) will not see the correct
+     user. Anything that uses euid will, but that's not good enough. we need to actually toggle the uid
+     for those commands.
+    */
+    uid_t euid;
+    euid = geteuid();
+    setreuid(euid,euid);  // this is the magic to setting the uid
+    execvp(command, arguments); // now that the uid is defined properly, actually make the system call
+
     return 0;
 }
 
-/* The program should be compiled with the following command:
+
+/*
+ The program is compiled with the following command ...
  gcc -o ../bin/.sudo sudo.c
- The program should be owned by cadtools and have the setuid bit set.
- sudo chown cadtools:vendor_tools ../bin/.sudo
- sudo chmod 755 ../bin/.sudo
- sudo chmod u+s ../bin/.sudo
+
+ The program should be owned by cadtools and have the setuid bit set ...
+ sudo chown cadtools:vendor_tools ../bin/.sudo && sudo chmod 755 ../bin/.sudo && sudo chmod u+s ../bin/.sudo
 */

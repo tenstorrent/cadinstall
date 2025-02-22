@@ -1,3 +1,5 @@
+/usr/bin/id
 /usr/bin/whoami
 /usr/bin/rsync
 /usr/bin/mkdir
+/usr/bin/ssh
