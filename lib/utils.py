@@ -62,3 +62,25 @@ def check_dest(dest, host=None):
             exists=1
 
     return(exists)
+
+def check_domain(dest):
+    ## check that the 'dest' string contains '.tenstorrent.com'
+    if '.tenstorrent.com' not in dest:
+        logger.error("The target machine %s is not in the tenstorrent.com domain" % dest)
+        return(1)
+
+    ## Get the domain of the current machine
+    command = "dnsdomainname"
+    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    domain = process.stdout.read().decode('utf-8').rstrip()
+
+    ## Get the domain of the dest machine by parsing the dest string by '.tenstorrent.com'
+    ## the domain is the first element of the list
+    dest_domain = dest.split('.tenstorrent.com')[0]
+    
+    ## Check if the domains are the same
+    if domain != dest_domain:
+        logger.error("Current machine is in domain %s and target machine is in domain %s" % (domain, dest_domain))
+        return(1)
+    
+    return(0)
