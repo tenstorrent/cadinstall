@@ -8,6 +8,7 @@ logger = logging.getLogger('cadinstall')
 
 def run_command(command, pretend=False):
     sudo = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../bin/.sudo ')
+    allowed_commands_file = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../etc/allowed_commands')
 
     pretend = lib.my_globals.get_pretend()
 
@@ -18,7 +19,7 @@ def run_command(command, pretend=False):
         sudo_command = command
         ## Build an array with every line from the allowed_commands file
         allowed_commands = []
-        with open('../etc/allowed_commands', 'r') as f:
+        with open(allowed_commands_file, 'r') as f:
             for line in f:
                 allowed_commands.append(line.rstrip())
 
