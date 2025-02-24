@@ -1,5 +1,6 @@
 import getpass
 import socket
+import os
 
 global vendor
 global tool
@@ -21,7 +22,8 @@ dest_mode = 2755
 rsync = '/usr/bin/rsync'
 mkdir = '/usr/bin/mkdir'
 curl = '/usr/bin/curl'
-rsync_options = "-av --chmod=u+rwx,g+rx,o=rx"
+rsync_exclude_file = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../etc/rsync_exclude_list.txt')
+rsync_options = "-av --chmod=u+rwx,g+rx,o=rx --exclude-from=%s" % (rsync_exclude_file)
 
 # Set up the global variables for the jenkins job
 curl_cmd = curl + ' -X POST -L'
