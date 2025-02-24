@@ -76,11 +76,11 @@ def check_domain(dest):
     ## Get the domain of the current machine
     command = "dnsdomainname"
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    domain = process.stdout.read().decode('utf-8').rstrip()
+    domain = process.stdout.read().decode('utf-8').rstrip().split('.')[0]
 
     ## Get the domain of the dest machine by parsing the dest string by '.tenstorrent.com'
     ## the domain is the first element of the list
-    dest_domain = dest.split('.tenstorrent.com')[0]
+    dest_domain = dest.split('.')[1]
     
     ## Check if the domains are the same
     if domain != dest_domain:
