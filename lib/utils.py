@@ -86,7 +86,7 @@ def check_domain(dest):
         return(1)
 
     ## Get the domain of the current machine
-    command = "dnsdomainname"
+    command = "/usr/bin/dnsdomainname"
     process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     domain = process.stdout.read().decode('utf-8').rstrip().split('.')[0]
 
