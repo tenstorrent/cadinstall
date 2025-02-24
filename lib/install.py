@@ -41,6 +41,8 @@ def write_metadata(dest):
     f.write("Installed from: %s\n" % socket.getfqdn())
     f.close()
 
+    os.system("/usr/bin/chmod 755 %s" % (tmp_metadata))
+
     command = "/usr/bin/rsync -avp %s %s" % (tmp_metadata, dest_metadata)
     status = run_command(command, lib.my_globals.pretend)
 
