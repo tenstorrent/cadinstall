@@ -13,6 +13,7 @@ def run_command(command, pretend=False):
 
     if pretend:
         logger.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
+        return(0)
     else:
         sudo_command = command
         ## Prefix every instance of '/usr/bin/mkdir' in sudo_command with sudo
@@ -35,6 +36,9 @@ def run_command(command, pretend=False):
 
             return_code = process.returncode
             logger.info("Return code: %s" % return_code)
+            return(return_code)
+
+    return(1)    
 
 
 def check_src(src):

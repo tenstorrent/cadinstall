@@ -17,6 +17,22 @@ def install_tool(vendor, tool, version, src, group, dest_host, dest):
     logger.info("Copying %s/%s/%s to %s ..." % (vendor,tool,version,dest_host))
 
     command = "%s %s --groupmap=\"*:%s\" --rsync-path=\'%s -p %s && %s\' %s/ %s:%s/" % (rsync, rsync_options, cadtools_group, mkdir, dest, rsync, src, dest_host, dest)
-    run_command(command, lib.my_globals.pretend)
+    status = run_command(command, lib.my_globals.pretend)
+
+    if check_domain(dest_host) == 0:
+        write_metadata(dest)
+
+    return(status)
+
+def write_metadata(dest):
+    metadata = dest + "/.cadinstall.metadata"
+    f = open(metadata, 'w')
+    f.write("Installed by: %s\n" % get_user())
+    f.write("Installed on: %s\n" % get_date())
+    ## get fully qualified hostname
+    f.write("Installed from: %s\n" % get_host())
+    f.write("Installation logfile: %s\n" % lib.my_globals.logfile)
+    f.close()
+
 
 
