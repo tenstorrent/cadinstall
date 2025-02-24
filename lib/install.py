@@ -41,7 +41,7 @@ def write_metadata(dest):
     f.write("Installed from: %s\n" % socket.getfqdn())
     f.close()
 
-    command = "/usr/bin/cp -f %s %s" % (tmp_metadata, dest_metadata)
+    command = "/usr/bin/rsync -avp %s %s" % (tmp_metadata, dest_metadata)
     status = run_command(command, lib.my_globals.pretend)
 
     os.remove(tmp_metadata)

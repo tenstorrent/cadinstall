@@ -16,10 +16,21 @@ def run_command(command, pretend=False):
         return(0)
     else:
         sudo_command = command
+        ## Build an array with every line from the allowed_commands file
+        allowed_commands = []
+        with open('../etc/allowed_commands', 'r') as f:
+            for line in f:
+                allowed_commands.append(line.rstrip())
+
+        if command.split(' ')[0] in allowed_commands:
+            ## Prefix the command with sudo and call it sudo_command
+            sudo_command = sudo + command
+                    
         ## Prefix every instance of '/usr/bin/mkdir' in sudo_command with sudo
-        sudo_command = sudo_command.replace('/usr/bin/mkdir', sudo + '/usr/bin/mkdir')
+        ##sudo_command = sudo_command.replace('/usr/bin/mkdir', sudo + '/usr/bin/mkdir')
         ## Prefix every instance of '/usr/bin/rsync' in sudo_command with sudo 
-        sudo_command = sudo_command.replace('/usr/bin/rsync', sudo + '/usr/bin/rsync')
+        ##sudo_command = sudo_command.replace('/usr/bin/rsync', sudo + '/usr/bin/rsync')
+        ## Check if the command exists in the allowed_commands file
 
         if lib.my_globals.get_vv():
             logger.info("Running sudo_command: %s" % sudo_command)
@@ -70,7 +81,7 @@ def check_dest(dest, host=None):
 def check_domain(dest):
     ## check that the 'dest' string contains '.tenstorrent.com'
     if '.tenstorrent.com' not in dest:
-        logger.error("The target machine %s is not in the tenstorrent.com domain" % dest)
+        logger.error("The target machine %s is does not contain the tenstorrent.com domain" % dest)
         return(1)
 
     ## Get the domain of the current machine
@@ -84,7 +95,8 @@ def check_domain(dest):
     
     ## Check if the domains are the same
     if domain != dest_domain:
-        logger.error("Current machine is in domain %s and target machine is in domain %s" % (domain, dest_domain))
+        if lib.my_globals.get_vv():
+            logger.info("Current machine is in domain %s and target machine is in domain %s" % (domain, dest_domain))
         return(1)
     
     return(0)
