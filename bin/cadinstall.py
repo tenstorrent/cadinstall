@@ -61,8 +61,22 @@ if args.sites:
     sitesList = args.sites.split(",")
 else:
     sitesList = []
+
+    ## Get the domain of the current machine
+    command = "/usr/bin/dnsdomainname"
+    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    domain = process.stdout.read().decode('utf-8').rstrip().split('.')[0]
+    domain = domain[:3]
+
     for site in siteHash:
-        sitesList.append(site)
+        ## skipping the local site because i want to force it to be first in the list
+        if site != domain:
+            sitesList.append(site)
+    
+if domain in siteHash:
+    ## now make sure to push the local site to the front of the list. this ensures that the localsite
+    ## gets updated first which is probably what the user wants
+    sitesList.insert(0, domain)
 
 # Set up the logging level
 if args.verbose:
