@@ -1,6 +1,10 @@
 from lib.utils import *
 from lib.tool_defs import *
 import lib.my_globals
+import getpass
+import socket
+from datetime import datetime
+
 
 import logging
 logger = logging.getLogger('cadinstall')
@@ -25,14 +29,21 @@ def install_tool(vendor, tool, version, src, group, dest_host, dest):
     return(status)
 
 def write_metadata(dest):
-    metadata = dest + "/.cadinstall.metadata"
-    f = open(metadata, 'w')
-    f.write("Installed by: %s\n" % get_user())
-    f.write("Installed on: %s\n" % get_date())
+    pid = os.getpid()
+    user = getpass.getuser()
+    metadata = ".cadinstall.metadata"
+    tmp_metadata = "/tmp/%s.%s.%d" % (metadata, user, pid)
+    dest_metadata = dest + "/" + metadata
+    f = open(tmp_metadata, 'w')
+    f.write("Installed by: %s\n" % user)
+    f.write("Installed on: %s\n" % datetime.now())
     ## get fully qualified hostname
-    f.write("Installed from: %s\n" % get_host())
-    f.write("Installation logfile: %s\n" % lib.my_globals.logfile)
+    f.write("Installed from: %s\n" % socket.getfqdn())
     f.close()
 
+    command = "/usr/bin/cp -f %s %s" % (tmp_metadata, dest_metadata)
+    status = run_command(command, lib.my_globals.pretend)
+
+    os.remove(tmp_metadata)
 
 
