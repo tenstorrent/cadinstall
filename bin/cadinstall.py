@@ -74,10 +74,10 @@ else:
         if site != domain:
             sitesList.append(site)
     
-if domain in siteHash:
-    ## now make sure to push the local site to the front of the list. this ensures that the localsite
-    ## gets updated first which is probably what the user wants
-    sitesList.insert(0, domain)
+    if domain in siteHash:
+        ## now make sure to push the local site to the front of the list. this ensures that the localsite
+        ## gets updated first which is probably what the user wants
+        sitesList.insert(0, domain)
 
 # Set up the logging level
 if args.verbose:
