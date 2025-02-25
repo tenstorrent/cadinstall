@@ -12,27 +12,23 @@ def run_command(command, pretend=False):
 
     pretend = lib.my_globals.get_pretend()
 
+    sudo_command = command
+    ## Build an array with every line from the allowed_commands file
+    allowed_commands = []
+    with open(allowed_commands_file, 'r') as f:
+        for line in f:
+            allowed_commands.append(line.rstrip())
+
+    for allowed_command in allowed_commands:
+        sudo_command = sudo_command.replace(allowed_command, sudo + allowed_command)
+
     if pretend:
-        logger.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
+        if lib.my_globals.get_vv():
+            logger.info("Because the '-p' switch was thrown, not actually running sudo_command: %s" % sudo_command)
+        else:
+            logger.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
         return(0)
     else:
-        sudo_command = command
-        ## Build an array with every line from the allowed_commands file
-        allowed_commands = []
-        with open(allowed_commands_file, 'r') as f:
-            for line in f:
-                allowed_commands.append(line.rstrip())
-
-        if command.split(' ')[0] in allowed_commands:
-            ## Prefix the command with sudo and call it sudo_command
-            sudo_command = sudo + command
-                    
-        ## Prefix every instance of '/usr/bin/mkdir' in sudo_command with sudo
-        ##sudo_command = sudo_command.replace('/usr/bin/mkdir', sudo + '/usr/bin/mkdir')
-        ## Prefix every instance of '/usr/bin/rsync' in sudo_command with sudo 
-        ##sudo_command = sudo_command.replace('/usr/bin/rsync', sudo + '/usr/bin/rsync')
-        ## Check if the command exists in the allowed_commands file
-
         if lib.my_globals.get_vv():
             logger.info("Running sudo_command: %s" % sudo_command)
         else:
