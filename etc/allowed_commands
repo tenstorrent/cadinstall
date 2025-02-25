@@ -2,4 +2,5 @@
 /usr/bin/whoami
 /usr/bin/rsync
 /usr/bin/mkdir
+/usr/bin/ln
 /usr/bin/ssh

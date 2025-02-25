@@ -53,6 +53,7 @@ install_parser.add_argument('--vendor', '-v', dest="vendor", required=True, help
 install_parser.add_argument('--tool', '-t', dest="tool", required=True, help='The tool to install')
 install_parser.add_argument('--version', '-ver', dest="version", required=True, help='The version of the tool to install')
 install_parser.add_argument('--src', dest="src", required=True, help='The source directory of the tool')
+install_parser.add_argument('--addlink', dest="link", required=False, help='The name of the symlink to create that will point to the new version created. Typically used for creating the \"latest\" symlink')
 install_parser.add_argument('--sites', type=str, required=False, help='The sites to install the tool to. Valid values: aus, yyz')
 install_parser.add_argument('--group', dest="group", default=cadtools_group, help='The group to own the destination directory')
 args = parser.parse_args()
@@ -135,6 +136,9 @@ def main():
             final_dest = "%s/%s/%s/%s" % (dest, vendor, tool, version)
             logger.info("Installing %s to %s ..." %(final_dest,site))
             install_tool(vendor, tool, version, src, group, dest_host, final_dest)
+
+            if args.link:
+                create_link(dest, vendor, tool, version, args.link)
 
             ## Now that one site is done, change the source to the installed site so that we are ensuring all sites are equivalent
             ## But don't do this if the final_dest is on tmp because that won't be accessible
