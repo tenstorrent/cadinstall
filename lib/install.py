@@ -48,10 +48,10 @@ def write_metadata(dest):
 
     os.remove(tmp_metadata)
 
-def create_link(dest, vendor, tool, version, link):
+def create_link(dest, vendor, tool, version, link, dest_host):
     logger.info("Creating a symlink called %s/%s/%s/%s that points to ./%s ..." % (dest,vendor,tool,link,version))
 
-    command = "/usr/bin/ln -sf ./%s %s/%s/%s/%s" % (version,dest,vendor,tool,link)
+    command = "/usr/bin/ssh %s /usr/bin/ln -sfT ./%s %s/%s/%s/%s" % (dest_host, version,dest,vendor,tool,link)
     status = run_command(command, lib.my_globals.pretend)
 
     return(status)

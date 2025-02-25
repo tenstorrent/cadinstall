@@ -138,7 +138,7 @@ def main():
             install_tool(vendor, tool, version, src, group, dest_host, final_dest)
 
             if args.link:
-                create_link(dest, vendor, tool, version, args.link)
+                create_link(dest, vendor, tool, version, args.link, dest_host)
 
             ## Now that one site is done, change the source to the installed site so that we are ensuring all sites are equivalent
             ## But don't do this if the final_dest is on tmp because that won't be accessible
