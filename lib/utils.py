@@ -1,4 +1,5 @@
 import os
+import pwd
 import sys
 import subprocess
 import logging
@@ -53,6 +54,33 @@ def check_src(src):
     if not os.path.exists(src):
         logger.error("Source directory does not exist: %s" % src)
         sys.exit(1)
+    
+    cadtools_user = lib.tool_defs.cadtools_user
+
+    try:
+        user_info = pwd.getpwnam(cadtools_user)
+        uid = user_info.pw_uid
+    except KeyError:
+        logger.error("User '%s' not found." % cadtools_user)
+        sys.exit(1)
+    
+    ## recursively check that every file in the src is readable by the cadinstall user
+    for dirpath, dirnames, filenames in os.walk(src):
+        for filename in filenames:
+            filepath = os.path.join(dirpath, filename)
+
+            stats = os.stat(filepath)
+    
+            if stats.st_uid == uid:
+                readable = bool(stats.st_mode & os.R_OK)
+                if not readable:
+                    logger.error("File is not readable: %s by %s" % (filepath,cadtools_user))
+                    sys.exit(1)
+    
+            if not os.access(filepath, os.R_OK):
+                logger.error("File is not readable: %s" % filepath)
+                sys.exit(1)
+
 
 def check_dest(dest, host=None):
     exists = 0
