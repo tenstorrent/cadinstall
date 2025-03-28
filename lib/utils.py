@@ -36,15 +36,19 @@ def run_command(command, pretend=False):
             logger.info("Running command: %s" % command)
 
         from subprocess import PIPE, Popen
-        #with Popen(command, shell=True, stdout=PIPE, stderr=PIPE, bufsize=1) as process:
+        return_code = 0
         with Popen(sudo_command, shell=True, stdout=PIPE, stderr=PIPE, bufsize=1) as process:
             for line in process.stdout:
                 logger.info(line.decode('utf-8').rstrip())
             for line in process.stderr:
+                return_code = return_code + 1
                 logger.error(line.decode('utf-8').rstrip())
 
+        process.wait()
+        if process.returncode:
             return_code = process.returncode
             logger.info("Return code: %s" % return_code)
+            
             return(return_code)
 
     return(1)    
