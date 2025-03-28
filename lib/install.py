@@ -23,6 +23,10 @@ def install_tool(vendor, tool, version, src, group, dest_host, dest):
     command = "%s %s --groupmap=\"*:%s\" --rsync-path=\'%s -p %s && %s\' %s/ %s:%s/" % (rsync, rsync_options, cadtools_group, mkdir, dest, rsync, src, dest_host, dest)
     status = run_command(command, lib.my_globals.pretend)
 
+    if status != 0:
+        logger.error("Something failed during the installation. Exiting ...")
+        sys.exit(1)
+
     if check_domain(dest_host) == 0:
         write_metadata(dest)
 
