@@ -51,36 +51,19 @@ def run_command(command, pretend=False):
 
 
 def check_src(src):
+    logger.info("Verifying source directory exists %s and is readable to %s ..." % (src,lib.tool_defs.cadtools_user))
     if not os.path.exists(src):
         logger.error("Source directory does not exist: %s" % src)
         sys.exit(1)
     
-    cadtools_user = lib.tool_defs.cadtools_user
-
-    try:
-        user_info = pwd.getpwnam(cadtools_user)
-        uid = user_info.pw_uid
-    except KeyError:
-        logger.error("User '%s' not found." % cadtools_user)
+    command = "/bin/test -r " + src 
+    status = run_command(command)
+    if status != 0:
+        logger.error("Source directory %s is not readable to %s" % (src,lib.tool_defs.cadtools_user))
         sys.exit(1)
-    
-    ## recursively check that every file in the src is readable by the cadinstall user
-    for dirpath, dirnames, filenames in os.walk(src):
-        for filename in filenames:
-            filepath = os.path.join(dirpath, filename)
 
-            stats = os.stat(filepath)
+    return(0)
     
-            if stats.st_uid == uid:
-                readable = bool(stats.st_mode & os.R_OK)
-                if not readable:
-                    logger.error("File is not readable: %s by %s" % (filepath,cadtools_user))
-                    sys.exit(1)
-    
-            if not os.access(filepath, os.R_OK):
-                logger.error("File is not readable: %s" % filepath)
-                sys.exit(1)
-
 
 def check_dest(dest, host=None):
     exists = 0
