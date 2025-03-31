@@ -1,22 +1,5 @@
 #!/usr/bin/python3
-## This script is used to install tools from vendors
-## This script has a complete help menu for each of the supported subcommands
-## This script has the following subcommands: install
-## This script accepts a dry-run switchcalled "pretend" that will print out the command that would be run, but will not actually run the command
-## The script accepts the following global switches that impatcs all print statements: verbose, vv, quiet
-## The quiet switch will suppress all output to the console except for errors. It will still print out all output to the log file
-## The verbose switch will print out all output to both the console and the log file
-## The vv switch will print out all output to both the console and the logfile, but it will also print out the commands that are being run
-## The install subcommand is used to install a tool and it takes the following switches: vendor, tool, version, src, sites, group
-## The install subcommand will generate a command to rsync the src directory to a global installation area with the specified group
-## If the script is NOT being run by the "cadtools" faceless account, it will make a call to a jenkins job to run the command that was generated
-## If the script IS being run by the "cadtools" faceless account, it will run the command that was generated
-## The script will exit with an error if the source directory does not exist, the destination directory already exists, or the destination directory does not exist
-## The script will print out the subcommand help menu if no subcommand is provided
-## The script will also exit with an error if an invalid subcommand is provided
-## The script will print out the actions it is taking as it is running
-## The script will also change the group of the destination directory to the specified group and change the permissions of the destination directory to allow both group and world read access
-
+## SPDX-License-Identifier: Apache-2.0 
 import os
 import sys
 import argparse

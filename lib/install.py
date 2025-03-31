@@ -1,3 +1,4 @@
+## SPDX-License-Identifier: Apache-2.0 
 from lib.utils import *
 from lib.tool_defs import *
 import lib.my_globals

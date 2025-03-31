@@ -1,3 +1,4 @@
+## SPDX-License-Identifier: Apache-2.0 
 import logging
 
 def setup_custom_logger(name, log_file):
