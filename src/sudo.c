@@ -1,4 +1,6 @@
-// SPDX-License-Identifier: Apache-2.0 
+// SPDX-FileCopyrightText: © 2025 Tenstorrent AI ULC
+// SPDX-License-Identifier: Apache-2.0
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
