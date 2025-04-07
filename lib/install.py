@@ -1,4 +1,6 @@
-## SPDX-License-Identifier: Apache-2.0 
+# SPDX-FileCopyrightText: © 2025 Tenstorrent AI ULC
+# SPDX-License-Identifier: Apache-2.0
+
 from lib.utils import *
 from lib.tool_defs import *
 import lib.my_globals
