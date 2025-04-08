@@ -10,11 +10,11 @@ import grp
 import re
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)) + '/..')
-import lib.log
-import lib.my_globals
-from lib.tool_defs import *
-from lib.utils import *
-from lib.install import *
+import cadinstall.log as log
+import cadinstall.my_globals as my_globals
+from cadinstall.tool_defs import *
+from cadinstall.utils import *
+from cadinstall.install import *
 
 ## define the full path to this script
 script = os.path.realpath(__file__)
@@ -23,7 +23,7 @@ script = os.path.realpath(__file__)
 full_command = ' '.join(sys.argv)
 
 log_file = '/tmp/cadinstall.' + user + '.log'
-logger = lib.log.setup_custom_logger('cadinstall', log_file)
+logger = log.setup_custom_logger('cadinstall', log_file)
 
 # Set up the argument parser
 parser = argparse.ArgumentParser(description='Install tools from vendors')
@@ -67,24 +67,24 @@ else:
 # Set up the logging level
 if args.verbose:
     logger.setLevel(logging.INFO)
-    lib.my_globals.set_verbose(True)
+    my_globals.set_verbose(True)
 if args.vv:
-    lib.my_globals.set_vv(True)
+    my_globals.set_vv(True)
     logger.setLevel(logging.DEBUG)
 if args.quiet:
-    lib.my_globals.set_quiet(True)
-    lib.my_globals.set_verbose(False)
-    lib.my_globals.set_vv(False)
+    my_globals.set_quiet(True)
+    my_globals.set_verbose(False)
+    my_globals.set_vv(False)
     logger.setLevel(logging.ERROR)
 
 # Set up the pretend switch
 if args.pretend:
-    lib.my_globals.set_pretend(True)
+    my_globals.set_pretend(True)
 else:
-    lib.my_globals.set_pretend(False)
+    my_globals.set_pretend(False)
 
 if args.force:
-    lib.my_globals.set_force(True)
+    my_globals.set_force(True)
 
 def main():
     ## show the help menu if no subcommand is provided

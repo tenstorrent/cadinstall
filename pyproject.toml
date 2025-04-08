@@ -1,0 +1,23 @@
+[project]
+name = "cadinstall"
+version = "1.0.0"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+
+[tool.setuptools.packages.find]
+where = [ ".", ]
+
+[project.scripts]
+cadinstall = "cadinstall:main"
+
+[build-system]
+# These are the assumed default build requirements from pip:
+# https://pip.pypa.io/en/stable/reference/pip/#pep-517-and-518-support
+requires = [
+  "setuptools>=43.0.0",
+  "wheel"
+]
+build-backend = "setuptools.build_meta"
+
+# vim: expandtab:ts=2:sw=2:ai
