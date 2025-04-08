@@ -17,16 +17,19 @@ This utility facilitates the deployment of EDA CAD tools by copying a staged too
    ```bash
    cd cadinstall
    ```
-3. Follow the setup instructions in the documentation.
+3. Install the project:
+   ```bash
+   pip install -e .
+   ```
 
 ## Usage
 Run the utility with the --help switch for full usage explanation and global switches to control stdout verbosity and dryrun mode:
 ```bash
-python cadinstall.py --help
+cadinstall --help
 ```
 There is currently only one subcommand supported - install. Run the subcommand with the --help switch for full usage explanation:
 ```bash
-python cadinstall.py install --help
+cadinstall install --help
 ```
 
 ## Contributing
