@@ -10,11 +10,11 @@ import grp
 import re
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)) + '/..')
-import lib.log
-import lib.my_globals
-from lib.tool_defs import *
-from lib.utils import *
-from lib.install import *
+import cadinstall.log as log
+import cadinstall.my_globals as my_globals
+from cadinstall.tool_defs import *
+from cadinstall.utils import *
+from cadinstall.install import *
 
 ## define the full path to this script
 script = os.path.realpath(__file__)
@@ -23,7 +23,7 @@ script = os.path.realpath(__file__)
 full_command = ' '.join(sys.argv)
 
 log_file = '/tmp/cadinstall.' + user + '.log'
-logger = lib.log.setup_custom_logger('cadinstall', log_file)
+logger = log.setup_custom_logger('cadinstall', log_file)
 
 # Set up the argument parser
 parser = argparse.ArgumentParser(description='Install tools from vendors')
@@ -39,54 +39,56 @@ install_parser.add_argument('--tool', '-t', dest="tool", required=True, help='Th
 install_parser.add_argument('--version', '-ver', dest="version", required=True, help='The version of the tool to install')
 install_parser.add_argument('--src', dest="src", required=True, help='The source directory of the tool')
 install_parser.add_argument('--addlink', dest="link", required=False, help='The name of the symlink to create that will point to the new version created. Typically used for creating the \"latest\" symlink')
-install_parser.add_argument('--sites', type=str, required=False, help='The sites to install the tool to. Valid values: aus, yyz')
+install_parser.add_argument('--sites', type=str, dest="sites", default="", required=False, help='The sites to install the tool to. Valid values: aus, yyz')
 install_parser.add_argument('--group', dest="group", default=cadtools_group, help='The group to own the destination directory')
-args = parser.parse_args()
-
-if args.sites:
-    sitesList = args.sites.split(",")
-else:
-    sitesList = []
-
-    ## Get the domain of the current machine
-    command = "/usr/bin/dnsdomainname"
-    process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    domain = process.stdout.read().decode('utf-8').rstrip().split('.')[0]
-    domain = domain[:3]
-
-    for site in siteHash:
-        ## skipping the local site because i want to force it to be first in the list
-        if site != domain:
-            sitesList.append(site)
-    
-    if domain in siteHash:
-        ## now make sure to push the local site to the front of the list. this ensures that the localsite
-        ## gets updated first which is probably what the user wants
-        sitesList.insert(0, domain)
-
-# Set up the logging level
-if args.verbose:
-    logger.setLevel(logging.INFO)
-    lib.my_globals.set_verbose(True)
-if args.vv:
-    lib.my_globals.set_vv(True)
-    logger.setLevel(logging.DEBUG)
-if args.quiet:
-    lib.my_globals.set_quiet(True)
-    lib.my_globals.set_verbose(False)
-    lib.my_globals.set_vv(False)
-    logger.setLevel(logging.ERROR)
-
-# Set up the pretend switch
-if args.pretend:
-    lib.my_globals.set_pretend(True)
-else:
-    lib.my_globals.set_pretend(False)
-
-if args.force:
-    lib.my_globals.set_force(True)
 
 def main():
+    args = parser.parse_args()
+    install_args = install_parser.parse_args()
+
+    if install_args.sites:
+        sitesList = args.sites.split(",")
+    else:
+        sitesList = []
+
+        ## Get the domain of the current machine
+        command = "/usr/bin/dnsdomainname"
+        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        domain = process.stdout.read().decode('utf-8').rstrip().split('.')[0]
+        domain = domain[:3]
+
+        for site in siteHash:
+            ## skipping the local site because i want to force it to be first in the list
+            if site != domain:
+                sitesList.append(site)
+
+        if domain in siteHash:
+            ## now make sure to push the local site to the front of the list. this ensures that the localsite
+            ## gets updated first which is probably what the user wants
+            sitesList.insert(0, domain)
+
+    # Set up the logging level
+    if args.verbose:
+        logger.setLevel(logging.INFO)
+        my_globals.set_verbose(True)
+    if args.vv:
+        my_globals.set_vv(True)
+        logger.setLevel(logging.DEBUG)
+    if args.quiet:
+        my_globals.set_quiet(True)
+        my_globals.set_verbose(False)
+        my_globals.set_vv(False)
+        logger.setLevel(logging.ERROR)
+
+    # Set up the pretend switch
+    if args.pretend:
+        my_globals.set_pretend(True)
+    else:
+        my_globals.set_pretend(False)
+
+    if args.force:
+        my_globals.set_force(True)
+
     ## show the help menu if no subcommand is provided
     if not args.subcommand:
         parser.print_help()
@@ -136,13 +138,5 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-
-
-
-
-
-
 
 

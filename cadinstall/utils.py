@@ -6,7 +6,7 @@ import pwd
 import sys
 import subprocess
 import logging
-import lib.my_globals
+import cadinstall.my_globals
 
 logger = logging.getLogger('cadinstall')
 
@@ -14,7 +14,7 @@ def run_command(command, pretend=False):
     sudo = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../bin/.sudo ')
     allowed_commands_file = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../etc/allowed_commands')
 
-    pretend = lib.my_globals.get_pretend()
+    pretend = my_globals.get_pretend()
 
     sudo_command = command
     ## Build an array with every line from the allowed_commands file
@@ -27,13 +27,13 @@ def run_command(command, pretend=False):
         sudo_command = sudo_command.replace(allowed_command, sudo + allowed_command)
 
     if pretend:
-        if lib.my_globals.get_vv():
+        if my_globals.get_vv():
             logger.info("Because the '-p' switch was thrown, not actually running sudo_command: %s" % sudo_command)
         else:
             logger.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
         return(0)
     else:
-        if lib.my_globals.get_vv():
+        if my_globals.get_vv():
             logger.info("Running sudo_command: %s" % sudo_command)
         else:
             logger.info("Running command: %s" % command)
@@ -55,7 +55,7 @@ def run_command(command, pretend=False):
 
 
 def check_src(src):
-    logger.info("Verifying source directory exists %s and is readable to %s ..." % (src,lib.tool_defs.cadtools_user))
+    logger.info("Verifying source directory exists %s and is readable to %s ..." % (src,tool_defs.cadtools_user))
     if not os.path.exists(src):
         logger.error("Source directory does not exist: %s" % src)
         sys.exit(1)
@@ -64,7 +64,7 @@ def check_src(src):
     status = run_command(command)
     logger.error("status=%s" % status)
     if status != 0:
-        logger.error("Source directory %s is not readable to %s" % (src,lib.tool_defs.cadtools_user))
+        logger.error("Source directory %s is not readable to %s" % (src,tool_defs.cadtools_user))
         sys.exit(1)
 
     return(0)
@@ -108,7 +108,7 @@ def check_domain(dest):
     
     ## Check if the domains are the same
     if domain != dest_domain:
-        if lib.my_globals.get_vv():
+        if my_globals.get_vv():
             logger.info("Current machine is in domain %s and target machine is in domain %s" % (domain, dest_domain))
         return(1)
     
