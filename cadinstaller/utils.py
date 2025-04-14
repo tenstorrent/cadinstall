@@ -6,7 +6,7 @@ import pwd
 import sys
 import subprocess
 import logging
-import cadinstall.my_globals
+import cadinstaller.my_globals
 
 logger = logging.getLogger('cadinstall')
 

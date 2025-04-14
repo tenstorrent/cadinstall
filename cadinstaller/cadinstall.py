@@ -10,11 +10,11 @@ import grp
 import re
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)) + '/..')
-import cadinstall.log as log
-import cadinstall.my_globals as my_globals
-from cadinstall.tool_defs import *
-from cadinstall.utils import *
-from cadinstall.install import *
+import cadinstaller.log as log
+import cadinstaller.my_globals as my_globals
+from cadinstaller.tool_defs import *
+from cadinstaller.utils import *
+from cadinstaller.install import *
 
 ## define the full path to this script
 script = os.path.realpath(__file__)

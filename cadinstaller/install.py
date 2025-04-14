@@ -1,9 +1,9 @@
 # SPDX-FileCopyrightText: © 2025 Tenstorrent AI ULC
 # SPDX-License-Identifier: Apache-2.0
 
-from cadinstall.utils import *
-from cadinstall.tool_defs import *
-import cadinstall.my_globals
+from cadinstaller.utils import *
+from cadinstaller.tool_defs import *
+import cadinstaller.my_globals
 import getpass
 import socket
 from datetime import datetime
