@@ -62,7 +62,6 @@ def check_src(src):
     
     command = "/bin/test -r " + src 
     status = run_command(command)
-    logger.error("status=%s" % status)
     if status != 0:
         logger.error("Source directory %s is not readable to %s" % (src,lib.tool_defs.cadtools_user))
         sys.exit(1)
