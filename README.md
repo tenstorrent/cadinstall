@@ -9,24 +9,42 @@ This utility facilitates the deployment of EDA CAD tools by copying a staged too
 - Supports copying as a protected faceless account via setuid
 
 ## Installation
-1. Clone this repository:
+1. Login as the <cadtools_user> account:
+   ```bash
+   su - <cadtools_user>
+   ```
+2. Clone this repository:
    ```bash
    git clone https://github.com/tenstorrent/cadinstall
    ```
-2. Navigate to the project directory:
+
+3. Edit tool configuration file to meet your needs:
    ```bash
-   cd cadinstall
+   vim cadinstall/cadinstaller/tool_defs.py
    ```
-3. Follow the setup instructions in the documentation.
+
+4. Compile setuid code and establish the setuid bit:
+   ```bash
+   mkdir -p cadinstall/bin
+   gcc -o cadinstall/bin/.sudo cadinstall/src/sudo.c
+   chown <cadtools_user>:<cadtools_group> cadinstall/bin/.sudo 
+   chmod 755 cadinstall/bin/.sudo
+   chmod u+s cadinstall/bin/.sudo
+   ```
+
+5. Copy the tool to the desired installation area:
+   ```bash
+   cp -Rfp cadinstall <destination installation area>
+   ```
 
 ## Usage
 Run the utility with the --help switch for full usage explanation and global switches to control stdout verbosity and dryrun mode:
 ```bash
-python cadinstall.py --help
+cadinstall --help
 ```
 There is currently only one subcommand supported - install. Run the subcommand with the --help switch for full usage explanation:
 ```bash
-python cadinstall.py install --help
+cadinstall install --help
 ```
 
 ## Contributing
