@@ -56,6 +56,10 @@ def run_command(command, pretend=False):
 
 def check_src(src):
     logger.info("Verifying source directory exists %s and is readable to %s ..." % (src,lib.tool_defs.cadtools_user))
+
+    if lib.my_globals.get_pretend():
+        return(0)
+
     if not os.path.exists(src):
         logger.error("Source directory does not exist: %s" % src)
         sys.exit(1)
