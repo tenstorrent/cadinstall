@@ -32,7 +32,7 @@ parser = argparse.ArgumentParser(
     formatter_class=argparse.RawDescriptionHelpFormatter,
     epilog="""
 Examples:
-  # Install a tool to all sites
+  # Install a tool to all sites (includes module files)
   cadinstall.py install --vendor synopsys --tool vcs --version 2023.12 --src /tmp/vcs_install
 
   # Install with a specific symlink
@@ -40,6 +40,9 @@ Examples:
 
   # Install to specific sites only
   cadinstall.py install --vendor synopsys --tool vcs --version 2023.12 --src /tmp/vcs_install --sites aus,yyz
+
+  # Skip module file installation (useful when permissions are insufficient)
+  cadinstall.py install --vendor synopsys --tool vcs --version 2023.12 --src /tmp/vcs_install --skip-modules
 
   # Dry run (pretend mode)
   cadinstall.py --pretend install --vendor synopsys --tool vcs --version 2023.12 --src /tmp/vcs_install
@@ -59,6 +62,7 @@ install_parser.add_argument('--src', dest="src", required=True, help='The source
 install_parser.add_argument('--addlink', dest="link", required=False, help='The name of the symlink to create that will point to the new version created. Typically used for creating the \"latest\" symlink')
 install_parser.add_argument('--sites', type=str, required=False, help='Comma-separated list of sites to install the tool to. Valid values: aus, yyz. If not specified, installs to all sites')
 install_parser.add_argument('--group', dest="group", default=cadtools_group, help='The group to own the destination directory')
+install_parser.add_argument('--skip-modules', dest="skip_modules", action='store_true', help='Skip module file installation (useful when permissions are insufficient)')
 args = parser.parse_args()
 
 # Check if no subcommand was provided
@@ -153,11 +157,28 @@ def main():
         for site in sitesList:
             dest_host = siteHash[site]
             final_dest = "%s/%s/%s/%s" % (dest, vendor, tool, version)
+            
+            # Check module permissions BEFORE starting installation to prevent incomplete installations
+            if not (hasattr(args, 'skip_modules') and args.skip_modules):
+                if not check_module_permissions(vendor, tool, dest_host):
+                    logger.error("Insufficient permissions for module file installation on %s." % site)
+                    logger.error("Use --skip-modules flag to skip module installation and continue.")
+                    sys.exit(1)
+            
             logger.info("Installing %s to %s ..." %(final_dest,site))
             install_tool(vendor, tool, version, src, group, dest_host, final_dest)
 
             if hasattr(args, 'link') and args.link:
                 create_link(dest, vendor, tool, version, args.link, dest_host)
+
+            # Install module files unless --skip-modules was specified
+            if not (hasattr(args, 'skip_modules') and args.skip_modules):
+                module_status = install_module_files(vendor, tool, version, dest_host)
+                if module_status != 0:
+                    logger.error("Module file installation failed for %s. Use --skip-modules to bypass." % site)
+                    sys.exit(1)
+            else:
+                logger.info("Skipping module file installation (--skip-modules specified)")
 
             # Now that one site is done, change the source to the installed site so that we are ensuring all sites are equivalent
             # But don't do this if the final_dest is on tmp because that won't be accessible

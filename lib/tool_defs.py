@@ -22,6 +22,9 @@ dest = '/tools_vendor'
 dest_group = 'cadtools'
 dest_mode = 2755
 
+# Module file path
+module_path = '/tools_vendor/tt/Modules/modulefiles'
+
 rsync = '/usr/bin/rsync'
 mkdir = '/usr/bin/mkdir'
 curl = '/usr/bin/curl'

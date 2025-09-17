@@ -3,5 +3,6 @@
 /usr/bin/rsync
 /usr/bin/mkdir
 /usr/bin/ln
+/usr/bin/rm
 /usr/bin/ssh
 /bin/test

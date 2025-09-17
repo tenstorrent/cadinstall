@@ -10,6 +10,7 @@ from datetime import datetime
 
 
 import logging
+import stat
 logger = logging.getLogger('cadinstall')
 
 def install_tool(vendor, tool, version, src, group, dest_host, dest):
@@ -63,4 +64,63 @@ def create_link(dest, vendor, tool, version, link, dest_host):
 
     return(status)
 
+def check_module_permissions(vendor, tool, dest_host):
+    """
+    Check if we have write permissions to the vendor/tool module directory.
+    Returns True if permissions are OK, False otherwise.
+    """
+    logger.info("Checking module directory permissions for %s/%s on %s ..." % (vendor, tool, dest_host))
+    
+    if lib.my_globals.get_pretend():
+        logger.info("Pretend mode: Skipping actual permissions check")
+        return True
+    
+    # Check if the vendor/tool directory exists and is writable
+    vendor_tool_path = "%s/%s/%s" % (module_path, vendor, tool)
+    
+    # Use SSH through setuid binary to check permissions on remote host
+    command = "/usr/bin/ssh %s /bin/test -w %s" % (dest_host, vendor_tool_path)
+    status = run_command(command)
+    
+    if status != 0:
+        logger.error("No write permission to module directory: %s on %s" % (vendor_tool_path, dest_host))
+        return False
+    
+    logger.info("Module directory permissions check passed")
+    return True
+
+def install_module_files(vendor, tool, version, dest_host):
+    """
+    Install module files for the given vendor/tool/version.
+    Creates symlinks pointing to commonModuleFile in the module path.
+    """
+    logger.info("Installing module files for %s/%s/%s on %s ..." % (vendor, tool, version, dest_host))
+    
+    # Create vendor/tool directory structure
+    module_dir = "%s/%s/%s" % (module_path, vendor, tool)
+    module_file = "%s/%s" % (module_dir, version)
+    
+    # Create directory structure if it doesn't exist - use setuid binary through run_command
+    mkdir_command = "/usr/bin/ssh %s /usr/bin/mkdir -p %s" % (dest_host, module_dir)
+    mkdir_status = run_command(mkdir_command)
+    if mkdir_status != 0:
+        logger.error("Failed to create module directory: %s" % module_dir)
+        return mkdir_status
+    
+    # Remove existing symlink if it exists - use setuid binary through run_command  
+    rm_command = "/usr/bin/ssh %s /usr/bin/rm -f %s" % (dest_host, module_file)
+    rm_status = run_command(rm_command)
+    if rm_status != 0:
+        logger.warning("Failed to remove existing module file: %s" % module_file)
+    
+    # Create symlink to commonModuleFile - use setuid binary through run_command
+    ln_command = "/usr/bin/ssh %s /usr/bin/ln -sf commonModuleFile %s" % (dest_host, module_file)
+    ln_status = run_command(ln_command)
+    if ln_status != 0:
+        logger.error("Failed to create module symlink: %s" % module_file)
+        return ln_status
+    else:
+        logger.info("Created module symlink: %s -> commonModuleFile" % module_file)
+    
+    return 0
 
