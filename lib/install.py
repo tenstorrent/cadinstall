@@ -24,7 +24,14 @@ def install_tool(vendor, tool, version, src, group, dest_host, dest):
     
     logger.info("Copying %s/%s/%s to %s ..." % (vendor,tool,version,dest_host))
 
-    command = "%s %s --groupmap=\"*:%s\" --rsync-path=\'%s -p %s && %s\' %s/ %s:%s/" % (rsync, rsync_options, cadtools_group, mkdir, dest, rsync, src, dest_host, dest)
+    # Use local rsync if same domain, SSH rsync if different domain
+    if check_domain(dest_host) == 0:
+        # Local domain - use local rsync
+        command = "%s %s --groupmap=\"*:%s\" %s/ %s/" % (rsync, rsync_options, cadtools_group, src, dest)
+    else:
+        # Remote domain - use SSH rsync
+        command = "%s %s --groupmap=\"*:%s\" --rsync-path=\'%s -p %s && %s\' %s/ %s:%s/" % (rsync, rsync_options, cadtools_group, mkdir, dest, rsync, src, dest_host, dest)
+    
     status = run_command(command, lib.my_globals.pretend)
 
     if status != 0:
@@ -59,7 +66,14 @@ def write_metadata(dest):
 def create_link(dest, vendor, tool, version, link, dest_host):
     logger.info("Creating a symlink called %s/%s/%s/%s that points to ./%s ..." % (dest,vendor,tool,link,version))
 
-    command = "/usr/bin/ssh %s /usr/bin/ln -sfT ./%s %s/%s/%s/%s" % (dest_host, version,dest,vendor,tool,link)
+    # Use local command if same domain, SSH if different domain
+    if check_domain(dest_host) == 0:
+        # Local domain - run command locally
+        command = "/usr/bin/ln -sfT ./%s %s/%s/%s/%s" % (version,dest,vendor,tool,link)
+    else:
+        # Remote domain - use SSH
+        command = "/usr/bin/ssh %s /usr/bin/ln -sfT ./%s %s/%s/%s/%s" % (dest_host, version,dest,vendor,tool,link)
+    
     status = run_command(command, lib.my_globals.pretend)
 
     return(status)
@@ -78,8 +92,14 @@ def check_module_permissions(vendor, tool, dest_host):
     # Check if the vendor/tool directory exists and is writable
     vendor_tool_path = "%s/%s/%s" % (module_path, vendor, tool)
     
-    # Use SSH through setuid binary to check permissions on remote host
-    command = "/usr/bin/ssh %s /bin/test -w %s" % (dest_host, vendor_tool_path)
+    # Use local commands if same domain, SSH if different domain
+    if check_domain(dest_host) == 0:
+        # Local domain - run command locally
+        command = "/bin/test -w %s" % vendor_tool_path
+    else:
+        # Remote domain - use SSH
+        command = "/usr/bin/ssh %s /bin/test -w %s" % (dest_host, vendor_tool_path)
+    
     status = run_command(command)
     
     if status != 0:
@@ -100,8 +120,15 @@ def install_module_files(vendor, tool, version, dest_host):
     module_dir = "%s/%s/%s" % (module_path, vendor, tool)
     module_file = "%s/%s" % (module_dir, version)
     
+    # Determine if we're working locally or remotely
+    is_local = (check_domain(dest_host) == 0)
+    
     # Create directory structure if it doesn't exist - use setuid binary through run_command
-    mkdir_command = "/usr/bin/ssh %s /usr/bin/mkdir -p %s" % (dest_host, module_dir)
+    if is_local:
+        mkdir_command = "/usr/bin/mkdir -p %s" % module_dir
+    else:
+        mkdir_command = "/usr/bin/ssh %s /usr/bin/mkdir -p %s" % (dest_host, module_dir)
+    
     mkdir_status = run_command(mkdir_command)
     if mkdir_status != 0:
         logger.error("Failed to create module directory: %s" % module_dir)
@@ -109,11 +136,19 @@ def install_module_files(vendor, tool, version, dest_host):
     
     # Check if existing symlink exists before trying to remove it
     if not lib.my_globals.get_pretend():
-        test_command = "/usr/bin/ssh %s /bin/test -f %s" % (dest_host, module_file)
+        if is_local:
+            test_command = "/bin/test -f %s" % module_file
+        else:
+            test_command = "/usr/bin/ssh %s /bin/test -f %s" % (dest_host, module_file)
+        
         test_status = run_command(test_command)
         if test_status == 0:
             # File exists, remove it - use setuid binary through run_command  
-            rm_command = "/usr/bin/ssh %s /usr/bin/rm -f %s" % (dest_host, module_file)
+            if is_local:
+                rm_command = "/usr/bin/rm -f %s" % module_file
+            else:
+                rm_command = "/usr/bin/ssh %s /usr/bin/rm -f %s" % (dest_host, module_file)
+            
             rm_status = run_command(rm_command)
             if rm_status != 0:
                 logger.warning("Failed to remove existing module file: %s" % module_file)
@@ -121,7 +156,11 @@ def install_module_files(vendor, tool, version, dest_host):
                 logger.info("Removed existing module file: %s" % module_file)
     
     # Create symlink to commonModuleFile - use setuid binary through run_command
-    ln_command = "/usr/bin/ssh %s /usr/bin/ln -sf commonModuleFile %s" % (dest_host, module_file)
+    if is_local:
+        ln_command = "/usr/bin/ln -sf commonModuleFile %s" % module_file
+    else:
+        ln_command = "/usr/bin/ssh %s /usr/bin/ln -sf commonModuleFile %s" % (dest_host, module_file)
+    
     ln_status = run_command(ln_command)
     if ln_status != 0:
         logger.error("Failed to create module symlink: %s" % module_file)
@@ -129,7 +168,11 @@ def install_module_files(vendor, tool, version, dest_host):
     
     # Verify the symlink was actually created (skip in pretend mode)
     if not lib.my_globals.get_pretend():
-        verify_command = "/usr/bin/ssh %s /bin/test -L %s" % (dest_host, module_file)
+        if is_local:
+            verify_command = "/bin/test -L %s" % module_file
+        else:
+            verify_command = "/usr/bin/ssh %s /bin/test -L %s" % (dest_host, module_file)
+        
         verify_status = run_command(verify_command)
         if verify_status != 0:
             logger.error("Module symlink creation failed - symlink does not exist: %s" % module_file)

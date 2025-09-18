@@ -77,16 +77,26 @@ def check_dest(dest, host=None):
     exists = 0
     if host:
         logger.info("Checking %s for %s ..." % (host, dest))
-        command = "ls -ltrd " + dest
-        ssh = subprocess.Popen(["ssh", "%s" % host, command],
-                       shell=False,
-                       stdout=subprocess.PIPE,
-                       stderr=subprocess.PIPE)
-        result = ssh.stdout.readlines()
-        if result:
-            logger.error("Destination directory already exists on %s : %s" % (host,dest))
-            exists=1
-            sys.exit(1)
+        
+        # Use local check if same domain, SSH if different domain
+        if check_domain(host) == 0:
+            # Local domain - check locally
+            if os.path.exists(dest):
+                logger.error("Destination directory already exists: %s" % dest)
+                exists=1
+                sys.exit(1)
+        else:
+            # Remote domain - use SSH
+            command = "ls -ltrd " + dest
+            ssh = subprocess.Popen(["ssh", "%s" % host, command],
+                           shell=False,
+                           stdout=subprocess.PIPE,
+                           stderr=subprocess.PIPE)
+            result = ssh.stdout.readlines()
+            if result:
+                logger.error("Destination directory already exists on %s : %s" % (host,dest))
+                exists=1
+                sys.exit(1)
     else:
         if os.path.exists(dest):
             logger.error("Destination directory already exists: %s" % dest)
