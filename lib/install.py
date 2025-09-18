@@ -107,11 +107,18 @@ def install_module_files(vendor, tool, version, dest_host):
         logger.error("Failed to create module directory: %s" % module_dir)
         return mkdir_status
     
-    # Remove existing symlink if it exists - use setuid binary through run_command  
-    rm_command = "/usr/bin/ssh %s /usr/bin/rm -f %s" % (dest_host, module_file)
-    rm_status = run_command(rm_command)
-    if rm_status != 0:
-        logger.warning("Failed to remove existing module file: %s" % module_file)
+    # Check if existing symlink exists before trying to remove it
+    if not lib.my_globals.get_pretend():
+        test_command = "/usr/bin/ssh %s /bin/test -f %s" % (dest_host, module_file)
+        test_status = run_command(test_command)
+        if test_status == 0:
+            # File exists, remove it - use setuid binary through run_command  
+            rm_command = "/usr/bin/ssh %s /usr/bin/rm -f %s" % (dest_host, module_file)
+            rm_status = run_command(rm_command)
+            if rm_status != 0:
+                logger.warning("Failed to remove existing module file: %s" % module_file)
+            else:
+                logger.info("Removed existing module file: %s" % module_file)
     
     # Create symlink to commonModuleFile - use setuid binary through run_command
     ln_command = "/usr/bin/ssh %s /usr/bin/ln -sf commonModuleFile %s" % (dest_host, module_file)
@@ -119,8 +126,16 @@ def install_module_files(vendor, tool, version, dest_host):
     if ln_status != 0:
         logger.error("Failed to create module symlink: %s" % module_file)
         return ln_status
-    else:
-        logger.info("Created module symlink: %s -> commonModuleFile" % module_file)
+    
+    # Verify the symlink was actually created (skip in pretend mode)
+    if not lib.my_globals.get_pretend():
+        verify_command = "/usr/bin/ssh %s /bin/test -L %s" % (dest_host, module_file)
+        verify_status = run_command(verify_command)
+        if verify_status != 0:
+            logger.error("Module symlink creation failed - symlink does not exist: %s" % module_file)
+            return verify_status
+    
+    logger.info("Created module symlink: %s -> commonModuleFile" % module_file)
     
     return 0
 
