@@ -32,7 +32,7 @@ def install_tool(vendor, tool, version, src, group, dest_host, dest):
         # Remote domain - use SSH rsync
         command = "%s %s --groupmap=\"*:%s\" --rsync-path=\'%s -p %s && %s\' %s/ %s:%s/" % (rsync, rsync_options, cadtools_group, mkdir, dest, rsync, src, dest_host, dest)
     
-    status = run_command(command, lib.my_globals.pretend)
+    status = run_command(command)
 
     if status != 0:
         logger.error("Something failed during the installation. Exiting ...")
@@ -59,7 +59,7 @@ def write_metadata(dest):
     os.system("/usr/bin/chmod 755 %s" % (tmp_metadata))
 
     command = "/usr/bin/rsync -avp %s %s" % (tmp_metadata, dest_metadata)
-    status = run_command(command, lib.my_globals.pretend)
+    status = run_command(command)
 
     os.remove(tmp_metadata)
 
@@ -74,7 +74,7 @@ def create_link(dest, vendor, tool, version, link, dest_host):
         # Remote domain - use SSH
         command = "/usr/bin/ssh %s /usr/bin/ln -sfT ./%s %s/%s/%s/%s" % (dest_host, version,dest,vendor,tool,link)
     
-    status = run_command(command, lib.my_globals.pretend)
+    status = run_command(command)
 
     return(status)
 
