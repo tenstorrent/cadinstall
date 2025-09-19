@@ -23,8 +23,38 @@ def run_command(command, pretend=False):
         for line in f:
             allowed_commands.append(line.rstrip())
 
-    for allowed_command in allowed_commands:
-        sudo_command = sudo_command.replace(allowed_command, sudo + allowed_command)
+    # Special handling for remote rsync commands with --rsync-path
+    if "--rsync-path=" in command and ":" in command:
+        # This is a remote rsync command, handle rsync-path specially
+        import re
+        # Extract the rsync-path content
+        rsync_path_match = re.search(r"--rsync-path='([^']*)'", command)
+        if rsync_path_match:
+            original_rsync_path = rsync_path_match.group(1)
+            # Replace commands in rsync-path with production .sudo path
+            production_sudo = "/tools_vendor/FOSS/cadinstall/2.0/bin/.sudo "
+            modified_rsync_path = original_rsync_path
+            for allowed_command in allowed_commands:
+                modified_rsync_path = modified_rsync_path.replace(allowed_command, production_sudo + allowed_command)
+            
+            # Temporarily replace the rsync-path with a placeholder to avoid double processing
+            placeholder = "RSYNC_PATH_PLACEHOLDER"
+            command_without_rsync_path = command.replace(f"--rsync-path='{original_rsync_path}'", placeholder)
+            
+            # Apply normal .sudo replacement to the rest of the command
+            for allowed_command in allowed_commands:
+                command_without_rsync_path = command_without_rsync_path.replace(allowed_command, sudo + allowed_command)
+            
+            # Put the modified rsync-path back
+            sudo_command = command_without_rsync_path.replace(placeholder, f"--rsync-path='{modified_rsync_path}'")
+        else:
+            # Fallback to normal processing if regex doesn't match
+            for allowed_command in allowed_commands:
+                sudo_command = sudo_command.replace(allowed_command, sudo + allowed_command)
+    else:
+        # Normal processing for non-remote rsync commands
+        for allowed_command in allowed_commands:
+            sudo_command = sudo_command.replace(allowed_command, sudo + allowed_command)
 
     if pretend:
         if lib.my_globals.get_vv():

@@ -48,7 +48,7 @@ Examples:
   cadinstall.py --pretend install --vendor synopsys --tool vcs --version 2023.12 --src /tmp/vcs_install
     """
 )
-parser.add_argument('--verbose', '-v', action='store_true', help='Print all output to the console and the log file')
+parser.add_argument('--verbose', '-v', action='count', default=0, help='Print all output to the console and the log file (use -vv or --vv for extra verbose)')
 parser.add_argument('--vv', action='store_true', help='Print all output to the console and the log file, but also print out the commands that are being run')
 parser.add_argument('--quiet', '-q', action='store_true', help='Suppress all output to the console except for errors. Print all output to the log file')
 parser.add_argument('--pretend', '-p', action='store_true', help='Print out the command that would be run, but do not actually run the command')
@@ -78,10 +78,10 @@ if not args.subcommand:
     sys.exit(1)
 
 # Set up the logging level
-if args.verbose:
+if args.verbose >= 1:
     logger.setLevel(logging.INFO)
     lib.my_globals.set_verbose(True)
-if args.vv:
+if args.vv or args.verbose >= 2:
     lib.my_globals.set_vv(True)
     logger.setLevel(logging.DEBUG)
 if args.quiet:

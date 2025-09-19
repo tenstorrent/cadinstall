@@ -26,10 +26,17 @@ def install_tool(vendor, tool, version, src, group, dest_host, dest):
 
     # Use local rsync if same domain, SSH rsync if different domain
     if check_domain(dest_host) == 0:
-        # Local domain - use local rsync
+        # Local domain - create parent directories first, then use local rsync
+        parent_dir = os.path.dirname(dest)
+        mkdir_command = "%s -p %s" % (mkdir, parent_dir)
+        mkdir_status = run_command(mkdir_command)
+        if mkdir_status != 0:
+            logger.error("Failed to create parent directory: %s" % parent_dir)
+            sys.exit(1)
+        
         command = "%s %s --groupmap=\"*:%s\" %s/ %s/" % (rsync, rsync_options, cadtools_group, src, dest)
     else:
-        # Remote domain - use SSH rsync
+        # Remote domain - use SSH rsync with original approach but let run_command handle .sudo wrapping
         command = "%s %s --groupmap=\"*:%s\" --rsync-path=\'%s -p %s && %s\' %s/ %s:%s/" % (rsync, rsync_options, cadtools_group, mkdir, dest, rsync, src, dest_host, dest)
     
     status = run_command(command)
