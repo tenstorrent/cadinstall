@@ -6,6 +6,7 @@ from lib.tool_defs import *
 import lib.my_globals
 import getpass
 import socket
+import os
 from datetime import datetime
 
 
@@ -87,7 +88,9 @@ def create_link(dest, vendor, tool, version, link, dest_host):
 
 def check_module_permissions(vendor, tool, dest_host):
     """
-    Check if we have write permissions to the vendor/tool module directory.
+    Check if we have write permissions to create the vendor/tool module directory.
+    This checks the first existing parent directory in the path to ensure we can
+    create all necessary subdirectories.
     Returns True if permissions are OK, False otherwise.
     """
     logger.info("Checking module directory permissions for %s/%s on %s ..." % (vendor, tool, dest_host))
@@ -96,25 +99,46 @@ def check_module_permissions(vendor, tool, dest_host):
         logger.info("Pretend mode: Skipping actual permissions check")
         return True
     
-    # Check if the vendor/tool directory exists and is writable
+    # Build the full path that needs to be created
     vendor_tool_path = "%s/%s/%s" % (module_path, vendor, tool)
     
-    # Use local commands if same domain, SSH if different domain
-    if check_domain(dest_host) == 0:
-        # Local domain - run command locally
-        command = "/bin/test -w %s" % vendor_tool_path
-    else:
-        # Remote domain - use SSH
-        command = "/usr/bin/ssh %s /bin/test -w %s" % (dest_host, vendor_tool_path)
+    # Find the first existing parent directory by walking up the path
+    path_to_check = vendor_tool_path
+    while path_to_check != "/" and path_to_check != "":
+        # Check if this directory exists
+        if check_domain(dest_host) == 0:
+            # Local domain - run command locally
+            exists_command = "/bin/test -d %s" % path_to_check
+        else:
+            # Remote domain - use SSH
+            exists_command = "/usr/bin/ssh %s /bin/test -d %s" % (dest_host, path_to_check)
+        
+        exists_status = run_command(exists_command)
+        
+        if exists_status == 0:
+            # This directory exists, check if it's writable
+            if check_domain(dest_host) == 0:
+                # Local domain - run command locally
+                write_command = "/bin/test -w %s" % path_to_check
+            else:
+                # Remote domain - use SSH
+                write_command = "/usr/bin/ssh %s /bin/test -w %s" % (dest_host, path_to_check)
+            
+            write_status = run_command(write_command)
+            
+            if write_status != 0:
+                logger.error("No write permission to create module directory structure. Cannot write to: %s on %s" % (path_to_check, dest_host))
+                return False
+            else:
+                logger.info("Module directory permissions check passed - can write to: %s" % path_to_check)
+                return True
+        
+        # Move up one directory level
+        path_to_check = os.path.dirname(path_to_check)
     
-    status = run_command(command)
-    
-    if status != 0:
-        logger.error("No write permission to module directory: %s on %s" % (vendor_tool_path, dest_host))
-        return False
-    
-    logger.info("Module directory permissions check passed")
-    return True
+    # If we got here, we couldn't find any existing parent directory
+    logger.error("Could not find any existing parent directory for module path: %s on %s" % (vendor_tool_path, dest_host))
+    return False
 
 def install_module_files(vendor, tool, version, dest_host):
     """
