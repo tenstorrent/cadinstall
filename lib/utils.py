@@ -117,16 +117,21 @@ def check_dest(dest, host=None):
                 sys.exit(1)
         else:
             # Remote domain - use SSH
-            command = "ls -ltrd " + dest
-            ssh = subprocess.Popen(["ssh", "%s" % host, command],
-                           shell=False,
-                           stdout=subprocess.PIPE,
-                           stderr=subprocess.PIPE)
-            result = ssh.stdout.readlines()
-            if result:
-                logger.error("Destination directory already exists on %s : %s" % (host,dest))
-                exists=1
-                sys.exit(1)
+            if lib.my_globals.get_pretend():
+                logger.info("Pretend mode: would check if destination exists on remote host %s: %s" % (host, dest))
+                # In pretend mode, assume destination doesn't exist to allow planning
+                exists = 0
+            else:
+                command = "ls -ltrd " + dest
+                ssh = subprocess.Popen(["ssh", "%s" % host, command],
+                               shell=False,
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.PIPE)
+                result = ssh.stdout.readlines()
+                if result:
+                    logger.error("Destination directory already exists on %s : %s" % (host,dest))
+                    exists=1
+                    sys.exit(1)
     else:
         if os.path.exists(dest):
             logger.error("Destination directory already exists: %s" % dest)
@@ -156,3 +161,151 @@ def check_domain(dest):
         return(1)
     
     return(0)
+
+def get_directory_size(path):
+    """Get the size of a directory in bytes using du command"""
+    if not os.path.exists(path):
+        logger.error("Source directory does not exist: %s" % path)
+        return 0
+    
+    try:
+        # Always calculate real size, even in pretend mode - this is important information
+        command = "du -sb %s" % path
+        if lib.my_globals.get_pretend():
+            logger.info("Pretend mode: calculating actual size of %s for planning purposes" % path)
+        
+        process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        output, error = process.communicate()
+        
+        if process.returncode != 0:
+            logger.error("Failed to calculate directory size for %s: %s" % (path, error.decode('utf-8')))
+            return 0
+        
+        # Parse the output - first field is the size in bytes
+        size_bytes = int(output.decode('utf-8').split()[0])
+        return size_bytes
+    except Exception as e:
+        logger.error("Error calculating directory size for %s: %s" % (path, str(e)))
+        return 0
+
+def get_available_space(path, host=None):
+    """Get available disk space at the given path in bytes"""
+    try:
+        if host and check_domain(host) != 0:
+            # Remote host - use SSH to check disk space
+            # Always calculate real space, even in pretend mode - this is important planning information
+            if lib.my_globals.get_pretend():
+                logger.info("Pretend mode: calculating actual available space at %s on remote host %s for planning purposes" % (path, host))
+            
+            # Check the path itself first, or walk up parent directories until we find one that exists
+            current_path = path
+            while current_path and current_path != '/':
+                command = "df -B1 %s" % current_path
+                ssh = subprocess.Popen(["ssh", "%s" % host, command],
+                                     shell=False,
+                                     stdout=subprocess.PIPE,
+                                     stderr=subprocess.PIPE)
+                output, error = ssh.communicate()
+                
+                if ssh.returncode == 0:
+                    # Success! Found an existing path
+                    if current_path != path and lib.my_globals.get_pretend():
+                        logger.info("Using existing parent directory %s for space calculation" % current_path)
+                    break
+                else:
+                    # Path doesn't exist, try parent directory
+                    parent_path = os.path.dirname(current_path)
+                    if parent_path == current_path:  # Reached root or can't go higher
+                        logger.error("Failed to check disk space on %s: %s" % (host, error.decode('utf-8')))
+                        return 0
+                    current_path = parent_path
+                    if lib.my_globals.get_pretend():
+                        logger.info("Path doesn't exist, trying parent directory %s" % parent_path)
+            
+            if ssh.returncode != 0:
+                logger.error("Failed to check disk space on %s: %s" % (host, error.decode('utf-8')))
+                return 0
+            
+            # Parse df output - available space is the 4th column (index 3)
+            lines = output.decode('utf-8').strip().split('\n')
+            if len(lines) >= 2:
+                fields = lines[1].split()
+                if len(fields) >= 4:
+                    available_bytes = int(fields[3])
+                    return available_bytes
+        else:
+            # Local host - always calculate real available space, even in pretend mode
+            if lib.my_globals.get_pretend():
+                logger.info("Pretend mode: calculating actual available space at %s for planning purposes" % path)
+            
+            parent_path = os.path.dirname(path) if not os.path.exists(path) else path
+            if not os.path.exists(parent_path):
+                # Find the closest existing parent directory to check space
+                parent_path = '/'
+                for part in path.split('/'):
+                    if part:
+                        test_path = os.path.join(parent_path, part)
+                        if os.path.exists(test_path):
+                            parent_path = test_path
+                        else:
+                            break
+            
+            statvfs = os.statvfs(parent_path)
+            available_bytes = statvfs.f_bavail * statvfs.f_frsize
+            return available_bytes
+    except Exception as e:
+        logger.error("Error checking available space for %s on %s: %s" % (path, host or "localhost", str(e)))
+        return 0
+    
+    return 0
+
+def format_bytes(bytes_value):
+    """Format bytes into human readable format"""
+    for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
+        if bytes_value < 1024.0:
+            return "%.2f %s" % (bytes_value, unit)
+        bytes_value /= 1024.0
+    return "%.2f PB" % bytes_value
+
+def check_disk_space_precheck(src, sites_list, vendor, tool, version, dest_base):
+    """
+    Precheck disk space requirements before installation.
+    Returns tuple: (success, sites_with_space, sites_without_space)
+    """
+    from lib.tool_defs import siteHash
+    
+    logger.info("Performing disk space precheck...")
+    
+    # Calculate source directory size
+    src_size = get_directory_size(src)
+    if src_size == 0:
+        logger.error("Could not determine source directory size")
+        return False, [], []
+    
+    logger.info("Source directory size: %s" % format_bytes(src_size))
+    
+    # Add 20% buffer for safety
+    required_space = int(src_size * 1.2)
+    logger.info("Required space (with 20%% buffer): %s" % format_bytes(required_space))
+    
+    sites_with_space = []
+    sites_without_space = []
+    
+    for site in sites_list:
+        dest_host = siteHash[site]
+        dest_path = "%s/%s/%s/%s" % (dest_base, vendor, tool, version)
+        
+        available_space = get_available_space(dest_path, dest_host)
+        
+        logger.info("Site %s (%s): Available space: %s" % (site, dest_host, format_bytes(available_space)))
+        
+        if available_space >= required_space:
+            sites_with_space.append(site)
+            logger.info("Site %s: SUFFICIENT SPACE" % site)
+        else:
+            sites_without_space.append(site)
+            logger.error("Site %s: INSUFFICIENT SPACE (need %s, have %s)" % 
+                        (site, format_bytes(required_space), format_bytes(available_space)))
+    
+    success = len(sites_without_space) == 0
+    return success, sites_with_space, sites_without_space

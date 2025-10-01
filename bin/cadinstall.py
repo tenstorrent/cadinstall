@@ -154,6 +154,29 @@ def main():
             install_parser.print_help()
             sys.exit(1)
 
+        # Perform disk space precheck before starting installation
+        from lib.utils import check_disk_space_precheck
+        success, sites_with_space, sites_without_space = check_disk_space_precheck(
+            src, sitesList, vendor, tool, version, dest)
+        
+        if not success:
+            logger.error("Disk space precheck failed!")
+            if sites_with_space and sites_without_space:
+                # Some sites have space, some don't - suggest using --sites switch
+                logger.error("Insufficient disk space on sites: %s" % ', '.join(sites_without_space))
+                logger.error("Sites with sufficient space: %s" % ', '.join(sites_with_space))
+                logger.error("")
+                logger.error("To install only to sites with sufficient space, use:")
+                logger.error("  --sites %s" % ','.join(sites_with_space))
+                sys.exit(1)
+            elif sites_without_space:
+                # No sites have sufficient space
+                logger.error("Insufficient disk space on all target sites: %s" % ', '.join(sites_without_space))
+                logger.error("Please free up disk space or choose a different installation location.")
+                sys.exit(1)
+        else:
+            logger.info("Disk space precheck passed for all sites: %s" % ', '.join(sites_with_space))
+
         for site in sitesList:
             dest_host = siteHash[site]
             final_dest = "%s/%s/%s/%s" % (dest, vendor, tool, version)
