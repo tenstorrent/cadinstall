@@ -31,11 +31,9 @@ def run_command(command, pretend=False):
         rsync_path_match = re.search(r"--rsync-path='([^']*)'", command)
         if rsync_path_match:
             original_rsync_path = rsync_path_match.group(1)
-            # Replace commands in rsync-path with production .sudo path
-            production_sudo = "/tools_vendor/FOSS/cadinstall/2.0/bin/.sudo "
+            # The remote commands in rsync-path don't need .sudo wrapping
+            # The rsync connection itself is authenticated via SSH
             modified_rsync_path = original_rsync_path
-            for allowed_command in allowed_commands:
-                modified_rsync_path = modified_rsync_path.replace(allowed_command, production_sudo + allowed_command)
             
             # Temporarily replace the rsync-path with a placeholder to avoid double processing
             placeholder = "RSYNC_PATH_PLACEHOLDER"
@@ -52,30 +50,10 @@ def run_command(command, pretend=False):
             for allowed_command in allowed_commands:
                 sudo_command = sudo_command.replace(allowed_command, sudo + ' ' + allowed_command)
     # Special handling for SSH commands to remote hosts
-    elif command.startswith('/usr/bin/ssh ') and ' /usr/bin/' in command:
-        # This is an SSH command with remote commands, handle specially
-        import re
-        # Split the command into SSH part and remote command part
-        ssh_match = re.match(r'(/usr/bin/ssh\s+\S+)\s+(.*)', command)
-        if ssh_match:
-            ssh_part = ssh_match.group(1)  # "/usr/bin/ssh hostname"
-            remote_part = ssh_match.group(2)  # "remote commands"
-            
-            # Replace SSH command with local .sudo
-            ssh_part = ssh_part.replace('/usr/bin/ssh', sudo + ' /usr/bin/ssh')
-            
-            # Replace remote commands with production .sudo
-            production_sudo = "/tools_vendor/FOSS/cadinstall/2.0/bin/.sudo "
-            remote_part_modified = remote_part
-            for allowed_command in allowed_commands:
-                if allowed_command != '/usr/bin/ssh':  # Don't replace SSH in remote part
-                    remote_part_modified = remote_part_modified.replace(allowed_command, production_sudo + allowed_command)
-            
-            sudo_command = ssh_part + ' ' + remote_part_modified
-        else:
-            # Fallback to normal processing
-            for allowed_command in allowed_commands:
-                sudo_command = sudo_command.replace(allowed_command, sudo + ' ' + allowed_command)
+    elif command.startswith('/usr/bin/ssh '):
+        # This is an SSH command - only wrap the SSH command itself with .sudo
+        # The remote commands don't need .sudo wrapping because SSH authentication handles it
+        sudo_command = sudo_command.replace('/usr/bin/ssh', sudo + ' /usr/bin/ssh')
     else:
         # Normal processing for non-remote rsync commands
         for allowed_command in allowed_commands:
@@ -127,8 +105,12 @@ def run_command_with_output(command, pretend=False):
             allowed_commands.append(line.rstrip())
 
     # Apply .sudo replacement to allowed commands
-    for allowed_command in allowed_commands:
-        sudo_command = sudo_command.replace(allowed_command, sudo + ' ' + allowed_command)
+    # Special handling for SSH commands - only wrap the SSH command itself
+    if command.startswith('/usr/bin/ssh '):
+        sudo_command = sudo_command.replace('/usr/bin/ssh', sudo + ' /usr/bin/ssh')
+    else:
+        for allowed_command in allowed_commands:
+            sudo_command = sudo_command.replace(allowed_command, sudo + ' ' + allowed_command)
 
     if pretend:
         if lib.my_globals.get_vv():
@@ -267,7 +249,6 @@ def get_available_space(path, host=None):
     try:
         if host and check_domain(host) != 0:
             # Remote host - use SSH to check disk space
-            # Always calculate real space, even in pretend mode - this is important planning information
             if lib.my_globals.get_pretend():
                 logger.info("Pretend mode: calculating actual available space at %s on remote host %s for planning purposes" % (path, host))
             
@@ -279,23 +260,16 @@ def get_available_space(path, host=None):
                 
                 if status == 0:
                     # Success! Found an existing path
-                    if current_path != path and lib.my_globals.get_pretend():
+                    if current_path != path:
                         logger.info("Using existing parent directory %s for space calculation" % current_path)
                     
-                    if lib.my_globals.get_pretend():
-                        # In pretend mode, return known good values based on the path
-                        if '/tools_vendor' in current_path:
-                            return 364 * 1024 * 1024 * 1024  # Return ~364GB for tools_vendor filesystem
-                        else:
-                            return 10 * 1024 * 1024 * 1024   # Return 10GB for other filesystems
-                    else:
-                        # Parse df output - available space is the 4th column (index 3)
-                        lines = output.strip().split('\n')
-                        if len(lines) >= 2:
-                            fields = lines[1].split()
-                            if len(fields) >= 4:
-                                available_bytes = int(fields[3])
-                                return available_bytes
+                    # Parse df output - available space is the 4th column (index 3)
+                    lines = output.strip().split('\n')
+                    if len(lines) >= 2:
+                        fields = lines[1].split()
+                        if len(fields) >= 4:
+                            available_bytes = int(fields[3])
+                            return available_bytes
                     break
                 else:
                     # Path doesn't exist, try parent directory
@@ -304,8 +278,7 @@ def get_available_space(path, host=None):
                         logger.error("Failed to find accessible directory for space check on %s" % host)
                         return 0
                     current_path = parent_path
-                    if lib.my_globals.get_pretend():
-                        logger.info("Path doesn't exist, trying parent directory %s" % parent_path)
+                    logger.info("Path doesn't exist, trying parent directory %s" % parent_path)
             
             # If we get here, something went wrong
             return 0
