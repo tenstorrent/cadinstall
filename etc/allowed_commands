@@ -5,4 +5,6 @@
 /usr/bin/ln
 /usr/bin/rm
 /usr/bin/ssh
+/usr/bin/df
+/usr/bin/ls
 /bin/test
