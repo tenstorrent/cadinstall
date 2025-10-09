@@ -11,7 +11,7 @@ import lib.my_globals
 logger = logging.getLogger('cadinstall')
 
 def run_command(command, pretend=False):
-    sudo = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../bin/.sudo ')
+    sudo = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../bin/.sudo')
     allowed_commands_file = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../etc/allowed_commands')
 
     pretend = lib.my_globals.get_pretend()
@@ -43,18 +43,43 @@ def run_command(command, pretend=False):
             
             # Apply normal .sudo replacement to the rest of the command
             for allowed_command in allowed_commands:
-                command_without_rsync_path = command_without_rsync_path.replace(allowed_command, sudo + allowed_command)
+                command_without_rsync_path = command_without_rsync_path.replace(allowed_command, sudo + ' ' + allowed_command)
             
             # Put the modified rsync-path back
             sudo_command = command_without_rsync_path.replace(placeholder, f"--rsync-path='{modified_rsync_path}'")
         else:
             # Fallback to normal processing if regex doesn't match
             for allowed_command in allowed_commands:
-                sudo_command = sudo_command.replace(allowed_command, sudo + allowed_command)
+                sudo_command = sudo_command.replace(allowed_command, sudo + ' ' + allowed_command)
+    # Special handling for SSH commands to remote hosts
+    elif command.startswith('/usr/bin/ssh ') and ' /usr/bin/' in command:
+        # This is an SSH command with remote commands, handle specially
+        import re
+        # Split the command into SSH part and remote command part
+        ssh_match = re.match(r'(/usr/bin/ssh\s+\S+)\s+(.*)', command)
+        if ssh_match:
+            ssh_part = ssh_match.group(1)  # "/usr/bin/ssh hostname"
+            remote_part = ssh_match.group(2)  # "remote commands"
+            
+            # Replace SSH command with local .sudo
+            ssh_part = ssh_part.replace('/usr/bin/ssh', sudo + ' /usr/bin/ssh')
+            
+            # Replace remote commands with production .sudo
+            production_sudo = "/tools_vendor/FOSS/cadinstall/2.0/bin/.sudo "
+            remote_part_modified = remote_part
+            for allowed_command in allowed_commands:
+                if allowed_command != '/usr/bin/ssh':  # Don't replace SSH in remote part
+                    remote_part_modified = remote_part_modified.replace(allowed_command, production_sudo + allowed_command)
+            
+            sudo_command = ssh_part + ' ' + remote_part_modified
+        else:
+            # Fallback to normal processing
+            for allowed_command in allowed_commands:
+                sudo_command = sudo_command.replace(allowed_command, sudo + ' ' + allowed_command)
     else:
         # Normal processing for non-remote rsync commands
         for allowed_command in allowed_commands:
-            sudo_command = sudo_command.replace(allowed_command, sudo + allowed_command)
+            sudo_command = sudo_command.replace(allowed_command, sudo + ' ' + allowed_command)
 
     if pretend:
         if lib.my_globals.get_vv():
@@ -89,7 +114,7 @@ def run_command_with_output(command, pretend=False):
     Run a command through the setuid binary and return both status and output.
     Similar to run_command() but captures and returns stdout.
     """
-    sudo = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../bin/.sudo ')
+    sudo = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../bin/.sudo')
     allowed_commands_file = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../etc/allowed_commands')
 
     pretend = lib.my_globals.get_pretend()
@@ -103,7 +128,7 @@ def run_command_with_output(command, pretend=False):
 
     # Apply .sudo replacement to allowed commands
     for allowed_command in allowed_commands:
-        sudo_command = sudo_command.replace(allowed_command, sudo + allowed_command)
+        sudo_command = sudo_command.replace(allowed_command, sudo + ' ' + allowed_command)
 
     if pretend:
         if lib.my_globals.get_vv():
@@ -175,7 +200,7 @@ def check_dest(dest, host=None):
                 # In pretend mode, assume destination doesn't exist to allow planning
                 exists = 0
             else:
-                command = "ssh %s ls -ltrd %s" % (host, dest)
+                command = "/usr/bin/ssh %s /usr/bin/ls -ltrd %s" % (host, dest)
                 status, output = run_command_with_output(command)
                 if status == 0 and output.strip():
                     logger.error("Destination directory already exists on %s : %s" % (host, dest))
@@ -249,7 +274,7 @@ def get_available_space(path, host=None):
             # Check the path itself first, or walk up parent directories until we find one that exists
             current_path = path
             while current_path and current_path != '/':
-                command = "ssh %s df -B1 %s" % (host, current_path)
+                command = "/usr/bin/ssh %s /usr/bin/df -B1 %s" % (host, current_path)
                 status, output = run_command_with_output(command)
                 
                 if status == 0:
