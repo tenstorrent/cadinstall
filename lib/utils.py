@@ -110,10 +110,15 @@ def run_command(command, pretend=False):
     return(return_code)    
 
 
-def run_command_with_output(command, pretend=False):
+def run_command_with_output(command, pretend=False, log_stderr=True):
     """
     Run a command through the setuid binary or listener and return both status and output.
     Similar to run_command() but captures and returns stdout.
+    
+    Args:
+        command: Command to run
+        pretend: If True, don't actually run the command
+        log_stderr: If True, log stderr output as errors (default True)
     """
     allowed_commands_file = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../etc/allowed_commands')
 
@@ -179,7 +184,8 @@ def run_command_with_output(command, pretend=False):
                 logger.info(line_str)
                 stdout_lines.append(line_str)
             for line in process.stderr:
-                logger.error(line.decode('utf-8').rstrip())
+                if log_stderr:
+                    logger.error(line.decode('utf-8').rstrip())
 
         process.wait()
         if process.returncode:
@@ -301,7 +307,8 @@ def get_available_space(path, host=None):
             current_path = path
             while current_path and current_path != '/':
                 command = "/usr/bin/ssh %s /usr/bin/df -B1 %s" % (host, current_path)
-                status, output = run_command_with_output(command)
+                # Don't log stderr as error while probing for existing directories
+                status, output = run_command_with_output(command, log_stderr=False)
                 
                 if status == 0:
                     # Success! Found an existing path
@@ -317,13 +324,12 @@ def get_available_space(path, host=None):
                             return available_bytes
                     break
                 else:
-                    # Path doesn't exist, try parent directory
+                    # Path doesn't exist, try parent directory silently
                     parent_path = os.path.dirname(current_path)
                     if parent_path == current_path:  # Reached root or can't go higher
                         logger.error("Failed to find accessible directory for space check on %s" % host)
                         return 0
                     current_path = parent_path
-                    logger.info("Path doesn't exist, trying parent directory %s" % parent_path)
             
             # If we get here, something went wrong
             return 0
@@ -387,7 +393,8 @@ def check_disk_space_precheck(src, sites_list, vendor, tool, version, dest_base)
     
     for site in sites_list:
         dest_host = siteHash[site]
-        dest_path = "%s/%s/%s/%s" % (dest_base, vendor, tool, version)
+        # Check vendor path first (not the full tool/version path that doesn't exist yet)
+        dest_path = "%s/%s" % (dest_base, vendor)
         
         available_space = get_available_space(dest_path, dest_host)
         
