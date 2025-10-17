@@ -16,6 +16,7 @@ import lib.my_globals
 from lib.tool_defs import *
 from lib.utils import *
 from lib.install import *
+from lib.executor import initialize_executor
 
 ## define the full path to this script
 script = os.path.realpath(__file__)
@@ -109,6 +110,9 @@ def main():
     logger.info("Host    : %s" % host)
     logger.info("Cmdline : %s" % full_command)
     logger.info("Logfile : %s" % log_file)
+
+    # Initialize the executor (check for setuid binary or listener)
+    initialize_executor()
 
     if user == cadtools_user:
         logger.error("This command cannot be run directly by %s. Please rerun as another user.\n" %(cadtools_user))

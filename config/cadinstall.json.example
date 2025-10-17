@@ -1,0 +1,10 @@
+{
+    "listener": {
+        "enabled": false,
+        "host": "localhost",
+        "port": 9876,
+        "user": "cadtools",
+        "logfile": "/var/log/cadinstall_listener.log"
+    }
+}
+

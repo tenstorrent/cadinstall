@@ -7,21 +7,44 @@ import sys
 import subprocess
 import logging
 import lib.my_globals
+from lib.executor import get_execution_mode, get_sudo_path, send_command_to_listener
 
 logger = logging.getLogger('cadinstall')
 
 def run_command(command, pretend=False):
-    sudo = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../bin/.sudo')
     allowed_commands_file = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../etc/allowed_commands')
 
     pretend = lib.my_globals.get_pretend()
 
-    sudo_command = command
-    ## Build an array with every line from the allowed_commands file
+    # Get the execution mode
+    execution_mode = get_execution_mode()
+    
+    # Build an array with every line from the allowed_commands file
     allowed_commands = []
     with open(allowed_commands_file, 'r') as f:
         for line in f:
             allowed_commands.append(line.rstrip())
+
+    # If using listener mode, send the command directly to the listener
+    if execution_mode == 'listener':
+        if pretend:
+            if lib.my_globals.get_vv():
+                logger.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
+            else:
+                logger.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
+            return 0
+        else:
+            if lib.my_globals.get_vv():
+                logger.info("Running command via listener: %s" % command)
+            else:
+                logger.info("Running command: %s" % command)
+            
+            exit_code, _ = send_command_to_listener(command)
+            return exit_code
+    
+    # Otherwise, use setuid mode (original logic)
+    sudo = get_sudo_path()
+    sudo_command = command
 
     # Special handling for remote rsync commands with --rsync-path
     if "--rsync-path=" in command and ":" in command:
@@ -89,20 +112,42 @@ def run_command(command, pretend=False):
 
 def run_command_with_output(command, pretend=False):
     """
-    Run a command through the setuid binary and return both status and output.
+    Run a command through the setuid binary or listener and return both status and output.
     Similar to run_command() but captures and returns stdout.
     """
-    sudo = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../bin/.sudo')
     allowed_commands_file = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../etc/allowed_commands')
 
     pretend = lib.my_globals.get_pretend()
 
-    sudo_command = command
-    ## Build an array with every line from the allowed_commands file
+    # Get the execution mode
+    execution_mode = get_execution_mode()
+    
+    # Build an array with every line from the allowed_commands file
     allowed_commands = []
     with open(allowed_commands_file, 'r') as f:
         for line in f:
             allowed_commands.append(line.rstrip())
+
+    # If using listener mode, send the command directly to the listener
+    if execution_mode == 'listener':
+        if pretend:
+            if lib.my_globals.get_vv():
+                logger.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
+            else:
+                logger.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
+            return 0, ""
+        else:
+            if lib.my_globals.get_vv():
+                logger.info("Running command via listener: %s" % command)
+            else:
+                logger.info("Running command: %s" % command)
+            
+            exit_code, stdout_lines = send_command_to_listener(command)
+            return exit_code, '\n'.join(stdout_lines)
+    
+    # Otherwise, use setuid mode (original logic)
+    sudo = get_sudo_path()
+    sudo_command = command
 
     # Apply .sudo replacement to allowed commands
     # Special handling for SSH commands - only wrap the SSH command itself

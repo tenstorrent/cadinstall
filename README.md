@@ -7,6 +7,7 @@ This utility facilitates the deployment of EDA CAD tools by copying a staged too
 - Automates the deployment of EDA CAD tools.
 - Ensures proper permissions and ownership during installation.
 - Supports copying as a protected faceless account via setuid
+- Alternative listener daemon mode for environments where setuid is not available (e.g., containers)
 
 ## Installation
 1. Clone this repository:
@@ -27,6 +28,26 @@ python cadinstall.py --help
 There is currently only one subcommand supported - install. Run the subcommand with the --help switch for full usage explanation:
 ```bash
 python cadinstall.py install --help
+```
+
+## No-Setuid Mode (Listener Daemon)
+
+For environments where setuid functionality is disabled or unavailable (such as inside containers), cadinstall supports a listener daemon mode. The listener runs as a privileged user and executes commands on behalf of cadinstall.
+
+See [LISTENER_SETUP.md](LISTENER_SETUP.md) for detailed setup instructions and [NO_SETUID.md](NO_SETUID.md) for the design document.
+
+Quick start:
+```bash
+# 1. Create configuration file (if not exists)
+cp config/cadinstall.json.example config/cadinstall.json
+
+# 2. Edit config and set "enabled": true in the listener section
+
+# 3. Start the listener daemon
+sudo bin/cadinstall_listener_ctl.sh start
+
+# 4. Use cadinstall normally - it will automatically use the listener
+python cadinstall.py install --vendor synopsys --tool vcs --version 2023.12 --src /tmp/vcs_install
 ```
 
 ## Contributing
