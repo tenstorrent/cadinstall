@@ -1,6 +1,7 @@
 # stuff that should be stored locally
 data/
 logs/
+config/*.json
 
 # to-be-deleted stuff
 tbd/
