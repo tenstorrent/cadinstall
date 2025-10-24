@@ -208,8 +208,8 @@ def install_module_files(vendor, tool, version, dest_host):
         if verify_status != 0:
             logger.error("Module symlink creation failed - symlink does not exist: %s" % module_file)
             return verify_status
-    
-    logger.info("Created module symlink: %s -> commonModuleFile" % module_file)
+        
+        logger.info("Created module symlink: %s -> commonModuleFile" % module_file)
     
     return 0
 

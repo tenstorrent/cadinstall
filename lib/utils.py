@@ -110,19 +110,20 @@ def run_command(command, pretend=False):
     return(return_code)    
 
 
-def run_command_with_output(command, pretend=False, log_stderr=True):
+def run_command_with_output(command, pretend=False, log_stderr=True, force_run=False):
     """
     Run a command through the setuid binary or listener and return both status and output.
     Similar to run_command() but captures and returns stdout.
     
     Args:
         command: Command to run
-        pretend: If True, don't actually run the command
+        pretend: If True, don't actually run the command (unless force_run is True)
         log_stderr: If True, log stderr output as errors (default True)
+        force_run: If True, run the command even in pretend mode (for read-only operations)
     """
     allowed_commands_file = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../etc/allowed_commands')
 
-    pretend = lib.my_globals.get_pretend()
+    pretend = lib.my_globals.get_pretend() and not force_run
 
     # Get the execution mode
     execution_mode = get_execution_mode()
@@ -308,7 +309,8 @@ def get_available_space(path, host=None):
             while current_path and current_path != '/':
                 command = "/usr/bin/ssh %s /usr/bin/df -B1 %s" % (host, current_path)
                 # Don't log stderr as error while probing for existing directories
-                status, output = run_command_with_output(command, log_stderr=False)
+                # Force run even in pretend mode - disk space check is read-only
+                status, output = run_command_with_output(command, log_stderr=False, force_run=True)
                 
                 if status == 0:
                     # Success! Found an existing path
