@@ -39,7 +39,7 @@ jenkins_url = 'http://aus-rv-l-7:8081'
 ## define a hash for machines per site
 siteHash = {
     'aus': 'rv-misc-01.aus2.tenstorrent.com',
-    'yyz': 'soc-l-01.yyz2.tenstorrent.com'
+    'yyz': 'pd-l-33.yyz2.tenstorrent.com'
 }
 
 
