@@ -15,6 +15,12 @@ import stat
 logger = logging.getLogger('cadinstall')
 
 def install_tool(vendor, tool, version, src, group, dest_host, dest):
+    """
+    Install a tool to the specified destination.
+    
+    Args:
+        dest_host: The host with write access to /tools_vendor (from siteHash)
+    """
     check_src(src)
 
     if check_dest(dest, dest_host):
@@ -25,9 +31,10 @@ def install_tool(vendor, tool, version, src, group, dest_host, dest):
     
     logger.info("Copying %s/%s/%s to %s ..." % (vendor,tool,version,dest_host))
 
-    # Use local rsync if same domain, SSH rsync if different domain
-    if check_domain(dest_host) == 0:
-        # Local domain - create parent directories first, then use local rsync
+    # Use local rsync if same host, SSH rsync if different host
+    # Since /tools_vendor is only writable on specific hosts (siteHash), we must check the actual host
+    if check_same_host(dest_host) == 0:
+        # Same host - create parent directories first, then use local rsync
         parent_dir = os.path.dirname(dest)
         mkdir_command = "%s -p %s" % (mkdir, parent_dir)
         mkdir_status = run_command(mkdir_command)
@@ -37,7 +44,7 @@ def install_tool(vendor, tool, version, src, group, dest_host, dest):
         
         command = "%s %s --groupmap=\"*:%s\" %s/ %s/" % (rsync, rsync_options, cadtools_group, src, dest)
     else:
-        # Remote domain - use SSH rsync with original approach but let run_command handle .sudo wrapping
+        # Different host - use SSH rsync
         command = "%s %s --groupmap=\"*:%s\" --rsync-path=\'%s -p %s && %s\' %s/ %s:%s/" % (rsync, rsync_options, cadtools_group, mkdir, dest, rsync, src, dest_host, dest)
     
     status = run_command(command)
@@ -46,7 +53,7 @@ def install_tool(vendor, tool, version, src, group, dest_host, dest):
         logger.error("Something failed during the installation. Exiting ...")
         sys.exit(1)
 
-    if check_domain(dest_host) == 0:
+    if check_same_host(dest_host) == 0:
         write_metadata(dest)
 
     return(status)
@@ -72,14 +79,20 @@ def write_metadata(dest):
     os.remove(tmp_metadata)
 
 def create_link(dest, vendor, tool, version, link, dest_host):
+    """
+    Create a symlink in /tools_vendor.
+    
+    Args:
+        dest_host: The host with write access to /tools_vendor (from siteHash)
+    """
     logger.info("Creating a symlink called %s/%s/%s/%s that points to ./%s ..." % (dest,vendor,tool,link,version))
 
-    # Use local command if same domain, SSH if different domain
-    if check_domain(dest_host) == 0:
-        # Local domain - run command locally
+    # Use local command if same host, SSH if different host
+    if check_same_host(dest_host) == 0:
+        # Same host - run command locally
         command = "/usr/bin/ln -sfT ./%s %s/%s/%s/%s" % (version,dest,vendor,tool,link)
     else:
-        # Remote domain - use SSH
+        # Different host - use SSH
         command = "/usr/bin/ssh %s /usr/bin/ln -sfT ./%s %s/%s/%s/%s" % (dest_host, version,dest,vendor,tool,link)
     
     status = run_command(command)
@@ -91,7 +104,12 @@ def check_module_permissions(vendor, tool, dest_host):
     Check if we have write permissions to create the vendor/tool module directory.
     This checks the first existing parent directory in the path to ensure we can
     create all necessary subdirectories.
-    Returns True if permissions are OK, False otherwise.
+    
+    Args:
+        dest_host: The host with write access to /tools_vendor (from siteHash)
+    
+    Returns:
+        True if permissions are OK, False otherwise.
     """
     logger.info("Checking module directory permissions for %s/%s on %s ..." % (vendor, tool, dest_host))
     
@@ -106,22 +124,22 @@ def check_module_permissions(vendor, tool, dest_host):
     path_to_check = vendor_tool_path
     while path_to_check != "/" and path_to_check != "":
         # Check if this directory exists
-        if check_domain(dest_host) == 0:
-            # Local domain - run command locally
+        if check_same_host(dest_host) == 0:
+            # Same host - run command locally
             exists_command = "/bin/test -d %s" % path_to_check
         else:
-            # Remote domain - use SSH
+            # Different host - use SSH
             exists_command = "/usr/bin/ssh %s /bin/test -d %s" % (dest_host, path_to_check)
         
         exists_status = run_command(exists_command)
         
         if exists_status == 0:
             # This directory exists, check if it's writable
-            if check_domain(dest_host) == 0:
-                # Local domain - run command locally
+            if check_same_host(dest_host) == 0:
+                # Same host - run command locally
                 write_command = "/bin/test -w %s" % path_to_check
             else:
-                # Remote domain - use SSH
+                # Different host - use SSH
                 write_command = "/usr/bin/ssh %s /bin/test -w %s" % (dest_host, path_to_check)
             
             write_status = run_command(write_command)
@@ -144,6 +162,9 @@ def install_module_files(vendor, tool, version, dest_host):
     """
     Install module files for the given vendor/tool/version.
     Creates symlinks pointing to commonModuleFile in the module path.
+    
+    Args:
+        dest_host: The host with write access to /tools_vendor (from siteHash)
     """
     logger.info("Installing module files for %s/%s/%s on %s ..." % (vendor, tool, version, dest_host))
     
@@ -151,8 +172,8 @@ def install_module_files(vendor, tool, version, dest_host):
     module_dir = "%s/%s/%s" % (module_path, vendor, tool)
     module_file = "%s/%s" % (module_dir, version)
     
-    # Determine if we're working locally or remotely
-    is_local = (check_domain(dest_host) == 0)
+    # Determine if we're working locally or remotely (must check actual host, not just domain)
+    is_local = (check_same_host(dest_host) == 0)
     
     # Create directory structure if it doesn't exist - use setuid binary through run_command
     if is_local:

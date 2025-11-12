@@ -220,15 +220,15 @@ def check_dest(dest, host=None):
     if host:
         logger.info("Checking %s for %s ..." % (host, dest))
         
-        # Use local check if same domain, SSH if different domain
-        if check_domain(host) == 0:
-            # Local domain - check locally
+        # Use local check if same host, SSH if different host
+        if check_same_host(host) == 0:
+            # Same host - check locally
             if os.path.exists(dest):
                 logger.error("Destination directory already exists: %s" % dest)
                 exists=1
                 sys.exit(1)
         else:
-            # Remote domain - use SSH through setuid binary
+            # Different host - use SSH through setuid binary
             if lib.my_globals.get_pretend():
                 logger.info("Pretend mode: would check if destination exists on remote host %s: %s" % (host, dest))
                 # In pretend mode, assume destination doesn't exist to allow planning
@@ -246,6 +246,27 @@ def check_dest(dest, host=None):
             exists=1
 
     return(exists)
+
+def check_same_host(dest_host):
+    """
+    Check if dest_host is the same as the current host.
+    Returns 0 if same host, 1 if different host.
+    """
+    import socket
+    current_host = socket.getfqdn()
+    
+    # Normalize both hostnames for comparison
+    current_host_normalized = current_host.lower()
+    dest_host_normalized = dest_host.lower()
+    
+    if current_host_normalized == dest_host_normalized:
+        if lib.my_globals.get_vv():
+            logger.info("Current host %s is the same as target host %s" % (current_host, dest_host))
+        return 0
+    else:
+        if lib.my_globals.get_vv():
+            logger.info("Current host %s is different from target host %s" % (current_host, dest_host))
+        return 1
 
 def check_domain(dest):
     ## check that the 'dest' string contains '.tenstorrent.com'
@@ -299,8 +320,8 @@ def get_directory_size(path):
 def get_available_space(path, host=None):
     """Get available disk space at the given path in bytes"""
     try:
-        if host and check_domain(host) != 0:
-            # Remote host - use SSH to check disk space
+        if host and check_same_host(host) != 0:
+            # Different host - use SSH to check disk space
             if lib.my_globals.get_pretend():
                 logger.info("Pretend mode: calculating actual available space at %s on remote host %s for planning purposes" % (path, host))
             
@@ -394,6 +415,7 @@ def check_disk_space_precheck(src, sites_list, vendor, tool, version, dest_base)
     sites_without_space = []
     
     for site in sites_list:
+        # Use the host with write access to /tools_vendor for this site
         dest_host = siteHash[site]
         # Check vendor path first (not the full tool/version path that doesn't exist yet)
         dest_path = "%s/%s" % (dest_base, vendor)

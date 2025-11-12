@@ -182,6 +182,7 @@ def main():
             logger.info("Disk space precheck passed for all sites: %s" % ', '.join(sites_with_space))
 
         for site in sitesList:
+            # Get the host with write access to /tools_vendor for this site
             dest_host = siteHash[site]
             final_dest = "%s/%s/%s/%s" % (dest, vendor, tool, version)
             

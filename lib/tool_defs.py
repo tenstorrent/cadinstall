@@ -36,7 +36,9 @@ curl_cmd = curl + ' -X POST -L'
 jenkins_user = "bswan:11ce74b6c978b1484607c6c9168e085b44"
 jenkins_url = 'http://aus-rv-l-7:8081'
 
-## define a hash for machines per site
+## Define the host per site that has /tools_vendor mounted with write access.
+## All operations to /tools_vendor MUST be performed on these machines.
+## These are the ONLY hosts in each site with write access to /tools_vendor.
 siteHash = {
     'aus': 'rv-misc-01.aus2.tenstorrent.com',
     'yyz': 'pd-l-33.yyz2.tenstorrent.com'
