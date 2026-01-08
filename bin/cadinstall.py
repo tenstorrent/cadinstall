@@ -129,6 +129,14 @@ def main():
         if hasattr(args, 'sites') and args.sites:
             sitesList = args.sites.split(",")
             sites = args.sites
+            
+            # Validate that all specified sites exist in siteHash
+            invalid_sites = [site for site in sitesList if site not in siteHash]
+            if invalid_sites:
+                valid_sites = ', '.join(sorted(siteHash.keys()))
+                logger.error("Invalid site(s) specified: %s" % ', '.join(invalid_sites))
+                logger.error("Valid sites are: %s" % valid_sites)
+                sys.exit(1)
         else:
             sites = 'all'
             # Get the domain of the current machine
@@ -186,7 +194,6 @@ def main():
             logger.info("Disk space precheck passed for all sites: %s" % ', '.join(sites_with_space))
 
         for site in sitesList:
-            # Get the host with write access to /tools_vendor for this site
             dest_host = siteHash[site]
             final_dest = "%s/%s/%s/%s" % (dest, vendor, tool, version)
             
