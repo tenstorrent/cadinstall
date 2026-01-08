@@ -53,17 +53,26 @@ def install_tool(vendor, tool, version, src, group, dest_host, dest):
         logger.error("Something failed during the installation. Exiting ...")
         sys.exit(1)
 
-    if check_same_host(dest_host) == 0:
-        write_metadata(dest)
+    # Always write metadata file, both for local and remote installations
+    write_metadata(dest, dest_host)
 
     return(status)
 
-def write_metadata(dest):
+def write_metadata(dest, dest_host):
+    """
+    Write installation metadata to the destination directory.
+    
+    Args:
+        dest: The destination directory path
+        dest_host: The host with write access to /tools_vendor (from siteHash)
+    """
     pid = os.getpid()
     user = getpass.getuser()
     metadata = ".cadinstall.metadata"
     tmp_metadata = "/tmp/%s.%s.%d" % (metadata, user, pid)
     dest_metadata = dest + "/" + metadata
+    
+    # Always create the temp file locally
     f = open(tmp_metadata, 'w')
     f.write("Installed by: %s\n" % user)
     f.write("Installed on: %s\n" % datetime.now())
@@ -73,10 +82,22 @@ def write_metadata(dest):
 
     os.system("/usr/bin/chmod 755 %s" % (tmp_metadata))
 
-    command = "/usr/bin/rsync -avp %s %s" % (tmp_metadata, dest_metadata)
+    # Copy to destination - use local rsync if same host, SSH rsync if different host
+    if check_same_host(dest_host) == 0:
+        # Same host - use local rsync
+        command = "/usr/bin/rsync -avp %s %s" % (tmp_metadata, dest_metadata)
+    else:
+        # Different host - use SSH rsync
+        command = "/usr/bin/rsync -avp %s %s:%s" % (tmp_metadata, dest_host, dest_metadata)
+    
     status = run_command(command)
 
     os.remove(tmp_metadata)
+    
+    if status == 0:
+        logger.info("Created metadata file: %s on %s" % (dest_metadata, dest_host))
+    else:
+        logger.warning("Failed to create metadata file: %s on %s" % (dest_metadata, dest_host))
 
 def create_link(dest, vendor, tool, version, link, dest_host):
     """
