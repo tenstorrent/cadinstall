@@ -257,6 +257,19 @@ def main():
             # But don't do this if the final_dest is on tmp because that won't be accessible
             if not re.search("^/tmp", final_dest):
                 src = final_dest
+        
+        # Check if installation was only to yyz2-nfspublish (Pure filesystem replication)
+        unique_hosts = set([siteHash[site] for site in sitesList])
+        if len(unique_hosts) == 1 and 'yyz2-nfspublish.yyz2.tenstorrent.com' in unique_hosts:
+            logger.info("")
+            logger.info("="*80)
+            logger.info("IMPORTANT: Installation completed to yyz2-nfspublish.yyz2.tenstorrent.com")
+            logger.info("This installation relies on Pure filesystem replication to propagate to other sites.")
+            logger.info("Replication can take up to 15 minutes before the installation is visible at other sites.")
+            logger.info("")
+            logger.info("If you are running from a non-YYZ site (e.g., AUS), please allow time for")
+            logger.info("replication before expecting the installation to be available locally.")
+            logger.info("="*80)
 
     else:
         logger.error("Unknown subcommand: %s" % args.subcommand)
