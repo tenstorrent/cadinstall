@@ -178,6 +178,10 @@ def main():
                 logger.error("Insufficient disk space on all target sites: %s" % ', '.join(sites_without_space))
                 logger.error("Please free up disk space or choose a different installation location.")
                 sys.exit(1)
+            else:
+                # No sites in either list - likely an error checking source directory or other critical failure
+                logger.error("Critical error during disk space precheck. Cannot proceed.")
+                sys.exit(1)
         else:
             logger.info("Disk space precheck passed for all sites: %s" % ', '.join(sites_with_space))
 
