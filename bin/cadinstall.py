@@ -24,7 +24,41 @@ script = os.path.realpath(__file__)
 ## define the full path to this script along with all of the arguments used in it's invocation
 full_command = ' '.join(sys.argv)
 
-log_file = '/tmp/cadinstall.' + user + '.log'
+## create a version of the command with all paths resolved to their real paths
+def resolve_command_paths(argv):
+    """
+    Resolve all file/directory paths in the command line to their real paths.
+    This converts symlinks to actual paths, showing real versions instead of 'latest' links.
+    """
+    resolved_args = []
+    for i, arg in enumerate(argv):
+        # Check if this looks like a file or directory path
+        if os.path.exists(arg):
+            # Resolve to real path
+            resolved_args.append(os.path.realpath(arg))
+        elif arg.startswith('--src='):
+            # Handle --src=PATH format
+            prefix = '--src='
+            path = arg[len(prefix):]
+            if os.path.exists(path):
+                resolved_args.append(prefix + os.path.realpath(path))
+            else:
+                resolved_args.append(arg)
+        elif i > 0 and argv[i-1] == '--src':
+            # Handle --src PATH format (path argument after --src flag)
+            if os.path.exists(arg):
+                resolved_args.append(os.path.realpath(arg))
+            else:
+                resolved_args.append(arg)
+        else:
+            resolved_args.append(arg)
+    return ' '.join(resolved_args)
+
+resolved_command = resolve_command_paths(sys.argv)
+lib.my_globals.set_full_command(resolved_command)
+
+log_file = '/tmp/cadinstall.%s.%d.log' % (user, os.getpid())
+lib.my_globals.set_log_file(log_file)
 logger = lib.log.setup_custom_logger('cadinstall', log_file)
 
 # Set up the argument parser

@@ -78,6 +78,14 @@ def write_metadata(dest, dest_host):
     f.write("Installed on: %s\n" % datetime.now())
     ## get fully qualified hostname
     f.write("Installed from: %s\n" % socket.getfqdn())
+    ## get the logfile location
+    log_file = lib.my_globals.get_log_file()
+    if log_file:
+        f.write("Logfile: %s\n" % log_file)
+    ## get the full command with resolved paths
+    full_command = lib.my_globals.get_full_command()
+    if full_command:
+        f.write("Command: %s\n" % full_command)
     f.close()
 
     os.system("/usr/bin/chmod 755 %s" % (tmp_metadata))

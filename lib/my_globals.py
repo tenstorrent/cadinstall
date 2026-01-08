@@ -6,6 +6,8 @@ vv=False
 quiet=False
 pretend=False
 force=False
+full_command=None
+log_file=None
 
 def set_force(value):
     global force
@@ -45,4 +47,17 @@ def get_quiet():
 def get_pretend():
     return(pretend)
 
+def set_full_command(value):
+    global full_command
+    full_command=value
+
+def get_full_command():
+    return(full_command)
+
+def set_log_file(value):
+    global log_file
+    log_file=value
+
+def get_log_file():
+    return(log_file)
 
