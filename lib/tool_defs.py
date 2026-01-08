@@ -40,8 +40,9 @@ jenkins_url = 'http://aus-rv-l-7:8081'
 ## All operations to /tools_vendor MUST be performed on these machines.
 ## These are the ONLY hosts in each site with write access to /tools_vendor.
 siteHash = {
-    'aus': 'rv-misc-01.aus2.tenstorrent.com',
-    'yyz': 'pd-l-33.yyz2.tenstorrent.com'
+#    'aus': 'rv-misc-01.aus2.tenstorrent.com',
+#    'yyz': 'pd-l-33.yyz2.tenstorrent.com'
+    'yyz': 'yyz2-nfspublish.yyz2.tenstorrent.com'
 }
 
 
