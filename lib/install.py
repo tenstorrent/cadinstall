@@ -107,6 +107,218 @@ def write_metadata(dest, dest_host):
     else:
         logger.warning("Failed to create metadata file: %s on %s" % (dest_metadata, dest_host))
 
+def delete_tool(vendor, tool, version, dest_host, dest):
+    """
+    Delete a previously installed vendor/tool/version from the specified destination.
+
+    This function enforces strict safety controls:
+      1. vendor, tool, and version must all be fully defined directory names
+         (validated by regex — no empty strings, no ".", no "..").
+      2. The installation metadata file (.cadinstall.metadata) must exist and
+         must contain the installing user's name; only that user may delete.
+      3. The deletion must occur within ``delete_time_limit`` minutes of the
+         original installation time.
+      4. The caller must interactively type "DELETE" (all caps) to confirm.
+      5. Pretend mode reports whether all conditions are met but does not
+         actually remove anything.
+
+    Args:
+        vendor:    The vendor name (e.g. "synopsys").
+        tool:      The tool name (e.g. "vcs").
+        version:   The version string (e.g. "2023.12").
+        dest_host: The host with write access to /tools_vendor (from siteHash).
+        dest:      The full destination path
+                   (e.g. /tools_vendor/synopsys/vcs/2023.12).
+
+    Returns:
+        0 on success, exits the program on any failure.
+    """
+    import re
+
+    pretend = lib.my_globals.get_pretend()
+
+    # ------------------------------------------------------------------ #
+    # 1. Validate vendor / tool / version with a strict regex            #
+    #    Each component must be a non-empty string that does NOT consist  #
+    #    solely of dots (blocks ".", "..", and sneaky "..." etc.) and     #
+    #    does not contain path separators or whitespace.                  #
+    # ------------------------------------------------------------------ #
+    path_component_re = re.compile(r'^(?!\.+$)[A-Za-z0-9][A-Za-z0-9._-]*$')
+
+    for label, value in [('vendor', vendor), ('tool', tool), ('version', version)]:
+        if not value or not path_component_re.match(value):
+            logger.error("Invalid %s value: '%s'. "
+                         "Each of --vendor, --tool, and --version must be a "
+                         "non-empty, valid directory name (no dots-only, no "
+                         "path separators, no whitespace)." % (label, value))
+            sys.exit(1)
+
+    logger.info("Delete request for %s/%s/%s on %s" % (vendor, tool, version, dest_host))
+
+    # ------------------------------------------------------------------ #
+    # 2. Verify the installation directory actually exists                #
+    # ------------------------------------------------------------------ #
+    is_local = (check_same_host(dest_host) == 0)
+
+    if not pretend:
+        if is_local:
+            test_command = "/bin/test -d %s" % dest
+        else:
+            test_command = "/usr/bin/ssh %s /bin/test -d %s" % (dest_host, dest)
+
+        test_status = run_command(test_command)
+        if test_status != 0:
+            logger.error("Destination directory does not exist: %s on %s" % (dest, dest_host))
+            sys.exit(1)
+    else:
+        logger.info("Pretend mode: would verify destination directory exists: %s on %s" % (dest, dest_host))
+
+    # ------------------------------------------------------------------ #
+    # 3. Read and parse the metadata file                                #
+    # ------------------------------------------------------------------ #
+    metadata_file = dest + "/.cadinstall.metadata"
+    metadata_contents = None
+
+    if not pretend:
+        if is_local:
+            cat_command = "/bin/cat %s" % metadata_file
+        else:
+            cat_command = "/usr/bin/ssh %s /bin/cat %s" % (dest_host, metadata_file)
+
+        status, output = run_command_with_output(cat_command, force_run=False)
+        if status != 0 or not output.strip():
+            logger.error("Cannot read metadata file: %s on %s" % (metadata_file, dest_host))
+            logger.error("Without the metadata file the installing user and install time "
+                         "cannot be determined. Deletion is not allowed.")
+            sys.exit(1)
+        metadata_contents = output.strip()
+    else:
+        # In pretend mode we still try to read the metadata so we can
+        # report whether the conditions *would* be met.
+        if is_local:
+            cat_command = "/bin/cat %s" % metadata_file
+        else:
+            cat_command = "/usr/bin/ssh %s /bin/cat %s" % (dest_host, metadata_file)
+
+        status, output = run_command_with_output(cat_command, force_run=True)
+        if status != 0 or not output.strip():
+            logger.error("Cannot read metadata file: %s on %s" % (metadata_file, dest_host))
+            logger.error("Without the metadata file the installing user and install time "
+                         "cannot be determined. Deletion would not be allowed.")
+            sys.exit(1)
+        metadata_contents = output.strip()
+
+    # Parse key fields from the metadata file
+    installed_by = None
+    installed_on = None
+    for line in metadata_contents.splitlines():
+        if line.startswith("Installed by:"):
+            installed_by = line.split(":", 1)[1].strip()
+        elif line.startswith("Installed on:"):
+            installed_on = line.split(":", 1)[1].strip()
+
+    # ------------------------------------------------------------------ #
+    # 4. Verify the current user is the one who performed the install    #
+    # ------------------------------------------------------------------ #
+    current_user = getpass.getuser()
+
+    if not installed_by:
+        logger.error("Could not determine the installing user from the metadata file.")
+        logger.error("Deletion is not allowed.")
+        sys.exit(1)
+
+    if current_user != installed_by:
+        logger.error("Deletion is only permitted by the user who performed the installation.")
+        logger.error("Current user : %s" % current_user)
+        logger.error("Installed by : %s" % installed_by)
+        sys.exit(1)
+
+    logger.info("User check passed: current user '%s' matches installing user '%s'" %
+                (current_user, installed_by))
+
+    # ------------------------------------------------------------------ #
+    # 5. Verify the deletion is within the allowed time window           #
+    # ------------------------------------------------------------------ #
+    if not installed_on:
+        logger.error("Could not determine the installation timestamp from the metadata file.")
+        logger.error("Deletion is not allowed.")
+        sys.exit(1)
+
+    try:
+        install_time = datetime.strptime(installed_on, "%Y-%m-%d %H:%M:%S.%f")
+    except ValueError:
+        # Try without microseconds
+        try:
+            install_time = datetime.strptime(installed_on, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            logger.error("Could not parse installation timestamp: '%s'" % installed_on)
+            logger.error("Deletion is not allowed.")
+            sys.exit(1)
+
+    from lib.tool_defs import delete_time_limit
+    elapsed = datetime.now() - install_time
+    elapsed_minutes = elapsed.total_seconds() / 60.0
+
+    if elapsed_minutes > delete_time_limit:
+        logger.error("Deletion time window has expired.")
+        logger.error("Installed on       : %s" % installed_on)
+        logger.error("Current time       : %s" % datetime.now())
+        logger.error("Elapsed            : %.1f minutes" % elapsed_minutes)
+        logger.error("Allowed time limit : %d minutes" % delete_time_limit)
+        sys.exit(1)
+
+    logger.info("Time check passed: %.1f minutes elapsed (limit: %d minutes)" %
+                (elapsed_minutes, delete_time_limit))
+
+    # ------------------------------------------------------------------ #
+    # 6. Interactive confirmation — user must type DELETE                 #
+    # ------------------------------------------------------------------ #
+    if pretend:
+        logger.info("Pretend mode: all conditions are met. In a real run the user "
+                     "would be prompted to type 'DELETE' to confirm removal of:")
+        logger.info("  %s on %s" % (dest, dest_host))
+        logger.info("Pretend mode: no actual removal performed.")
+        return 0
+
+    logger.info("")
+    logger.info("=" * 70)
+    logger.info("WARNING: You are about to permanently delete:")
+    logger.info("  %s on %s" % (dest, dest_host))
+    logger.info("")
+    logger.info("Type DELETE (all caps) to confirm: ")
+    logger.info("=" * 70)
+
+    try:
+        confirmation = input("Confirm deletion by typing DELETE: ")
+    except (EOFError, KeyboardInterrupt):
+        logger.error("\nDeletion cancelled.")
+        sys.exit(1)
+
+    if confirmation != "DELETE":
+        logger.error("Confirmation failed. You typed '%s' instead of 'DELETE'." % confirmation)
+        logger.error("Deletion cancelled.")
+        sys.exit(1)
+
+    logger.info("Confirmation accepted. Proceeding with deletion ...")
+
+    # ------------------------------------------------------------------ #
+    # 7. Perform the actual removal                                      #
+    # ------------------------------------------------------------------ #
+    if is_local:
+        rm_command = "/usr/bin/rm -rf %s" % dest
+    else:
+        rm_command = "/usr/bin/ssh %s /usr/bin/rm -rf %s" % (dest_host, dest)
+
+    status = run_command(rm_command)
+
+    if status != 0:
+        logger.error("Something failed during the deletion. Exiting ...")
+        sys.exit(1)
+
+    logger.info("Successfully deleted %s/%s/%s on %s" % (vendor, tool, version, dest_host))
+    return 0
+
+
 def create_link(dest, vendor, tool, version, link, dest_host):
     """
     Create a symlink in /tools_vendor.

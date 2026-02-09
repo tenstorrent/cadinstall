@@ -36,6 +36,10 @@ curl_cmd = curl + ' -X POST -L'
 jenkins_user = "bswan:11ce74b6c978b1484607c6c9168e085b44"
 jenkins_url = 'http://aus-rv-l-7:8081'
 
+# Maximum time (in minutes) after installation during which a delete is allowed.
+# After this many minutes from the "Installed on" timestamp, the delete subcommand will refuse to run.
+delete_time_limit = 240  # 4 hours
+
 ## Define the host per site that has /tools_vendor mounted with write access.
 ## All operations to /tools_vendor MUST be performed on these machines.
 ## These are the ONLY hosts in each site with write access to /tools_vendor.

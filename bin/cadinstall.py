@@ -81,6 +81,15 @@ Examples:
 
   # Dry run (pretend mode)
   cadinstall.py --pretend install --vendor synopsys --tool vcs --version 2023.12 --src /tmp/vcs_install
+
+  # Delete a specific tool version (must be run by the installing user within the allowed time window)
+  cadinstall.py delete --vendor synopsys --tool vcs --version 2023.12
+
+  # Delete from a specific site only
+  cadinstall.py delete --vendor synopsys --tool vcs --version 2023.12 --sites yyz
+
+  # Dry run of a delete (check if all conditions are met without actually deleting)
+  cadinstall.py --pretend delete --vendor synopsys --tool vcs --version 2023.12
     """
 )
 parser.add_argument('--verbose', '-v', action='count', default=0, help='Print all output to the console and the log file (use -vv or --vv for extra verbose)')
@@ -90,14 +99,24 @@ parser.add_argument('--pretend', '-p', action='store_true', help='Print out the 
 parser.add_argument('--force', '-f', action='store_true', help='Forces the installation despite any warnings/errors such as the destination already existing')
 subparsers = parser.add_subparsers(dest='subcommand', help='Available subcommands')
 install_parser = subparsers.add_parser('install', help='Install a tool from a vendor')
-install_parser.add_argument('--vendor', dest="vendor", required=True, help='The vendor of the tool (e.g., synopsys, cadence)')
-install_parser.add_argument('--tool', '-t', dest="tool", required=True, help='The tool to install (e.g., vcs, icc2)')
-install_parser.add_argument('--version', '-ver', dest="version", required=True, help='The version of the tool to install (e.g., 2023.12)')
-install_parser.add_argument('--src', dest="src", required=True, help='The source directory of the tool installation files')
+install_required = install_parser.add_argument_group('required arguments')
+install_required.add_argument('--vendor', dest="vendor", required=True, help='The vendor of the tool (e.g., synopsys, cadence)')
+install_required.add_argument('--tool', '-t', dest="tool", required=True, help='The tool to install (e.g., vcs, icc2)')
+install_required.add_argument('--version', '-ver', dest="version", required=True, help='The version of the tool to install (e.g., 2023.12)')
+install_required.add_argument('--src', dest="src", required=True, help='The source directory of the tool installation files')
 install_parser.add_argument('--addlink', dest="link", required=False, help='The name of the symlink to create that will point to the new version created. Typically used for creating the \"latest\" symlink')
 install_parser.add_argument('--sites', type=str, required=False, help='Comma-separated list of sites to install the tool to. Valid values: aus, yyz. If not specified, installs to all sites')
 install_parser.add_argument('--group', dest="group", default=cadtools_group, help='The group to own the destination directory')
 install_parser.add_argument('--skip-modules', dest="skip_modules", action='store_true', help='Skip module file installation (useful when permissions are insufficient)')
+
+# --- delete subcommand ---
+delete_parser = subparsers.add_parser('delete', help='Delete a previously installed vendor/tool/version')
+delete_required = delete_parser.add_argument_group('required arguments')
+delete_required.add_argument('--vendor', dest="vendor", required=True, help='The vendor of the tool (e.g., synopsys, cadence)')
+delete_required.add_argument('--tool', '-t', dest="tool", required=True, help='The tool to delete (e.g., vcs, icc2)')
+delete_required.add_argument('--version', '-ver', dest="version", required=True, help='The version of the tool to delete (e.g., 2023.12)')
+delete_parser.add_argument('--sites', type=str, required=False, help='Comma-separated list of sites to delete the tool from. Valid values: aus, yyz. If not specified, deletes from all sites')
+
 args = parser.parse_args()
 
 # Check if no subcommand was provided
@@ -105,6 +124,7 @@ if not args.subcommand:
     print("Error: No subcommand provided.")
     print("\nAvailable subcommands:")
     print("  install    Install a tool from a vendor")
+    print("  delete     Delete a previously installed vendor/tool/version")
     print("\nFor detailed help on a specific subcommand, use:")
     print("  cadinstall.py <subcommand> --help")
     print("\nFor general help, use:")
@@ -270,6 +290,43 @@ def main():
             logger.info("If you are running from a non-YYZ site (e.g., AUS), please allow time for")
             logger.info("replication before expecting the installation to be available locally.")
             logger.info("="*80)
+
+    elif args.subcommand == 'delete':
+        vendor = args.vendor
+        tool = args.tool
+        version = args.version
+
+        # Handle sites argument
+        if hasattr(args, 'sites') and args.sites:
+            sitesList = args.sites.split(",")
+
+            # Validate that all specified sites exist in siteHash
+            invalid_sites = [site for site in sitesList if site not in siteHash]
+            if invalid_sites:
+                valid_sites = ', '.join(sorted(siteHash.keys()))
+                logger.error("Invalid site(s) specified: %s" % ', '.join(invalid_sites))
+                logger.error("Valid sites are: %s" % valid_sites)
+                sys.exit(1)
+        else:
+            # Get the domain of the current machine
+            command = "/usr/bin/dnsdomainname"
+            process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            domain = process.stdout.read().decode('utf-8').rstrip().split('.')[0]
+            domain = domain[:3]
+
+            for site in siteHash:
+                if site != domain:
+                    sitesList.append(site)
+
+            if domain in siteHash:
+                sitesList.insert(0, domain)
+
+        for site in sitesList:
+            dest_host = siteHash[site]
+            final_dest = "%s/%s/%s/%s" % (dest, vendor, tool, version)
+
+            logger.info("Deleting %s from %s ..." % (final_dest, site))
+            delete_tool(vendor, tool, version, dest_host, final_dest)
 
     else:
         logger.error("Unknown subcommand: %s" % args.subcommand)
