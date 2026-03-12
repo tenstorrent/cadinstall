@@ -62,10 +62,7 @@ lib.my_globals.set_log_file(log_file)
 logger = lib.log.setup_custom_logger('cadinstall', log_file)
 
 # Set up the argument parser
-parser = argparse.ArgumentParser(
-    description='Install tools from vendors across multiple sites',
-    formatter_class=argparse.RawDescriptionHelpFormatter,
-    epilog="""
+epilog_text = """
 Examples:
   # Install a tool to all sites (includes module files)
   cadinstall.py install --vendor synopsys --tool vcs --version 2023.12 --src /tmp/vcs_install
@@ -81,7 +78,17 @@ Examples:
 
   # Dry run (pretend mode)
   cadinstall.py --pretend install --vendor synopsys --tool vcs --version 2023.12 --src /tmp/vcs_install
+"""
+if 'addlink' not in disabled_subcommands:
+    epilog_text += """
+  # Create or update a symlink for a previously installed tool version
+  cadinstall.py addlink --vendor anthropic --tool claude-code --version 2.1.71 --link latest
 
+  # Create a symlink on a specific site only
+  cadinstall.py addlink --vendor synopsys --tool vcs --version 2023.12 --link latest --sites yyz
+"""
+if 'delete' not in disabled_subcommands:
+    epilog_text += """
   # Delete a specific tool version (must be run by the installing user within the allowed time window)
   cadinstall.py delete --vendor synopsys --tool vcs --version 2023.12
 
@@ -90,7 +97,11 @@ Examples:
 
   # Dry run of a delete (check if all conditions are met without actually deleting)
   cadinstall.py --pretend delete --vendor synopsys --tool vcs --version 2023.12
-    """
+"""
+parser = argparse.ArgumentParser(
+    description='Install tools from vendors across multiple sites',
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    epilog=epilog_text
 )
 parser.add_argument('--verbose', '-v', action='count', default=0, help='Print all output to the console and the log file (use -vv or --vv for extra verbose)')
 parser.add_argument('--vv', action='store_true', help='Print all output to the console and the log file, but also print out the commands that are being run')
@@ -109,13 +120,24 @@ install_parser.add_argument('--sites', type=str, required=False, help='Comma-sep
 install_parser.add_argument('--group', dest="group", default=cadtools_group, help='The group to own the destination directory')
 install_parser.add_argument('--skip-modules', dest="skip_modules", action='store_true', help='Skip module file installation (useful when permissions are insufficient)')
 
-# --- delete subcommand ---
-delete_parser = subparsers.add_parser('delete', help='Delete a previously installed vendor/tool/version')
-delete_required = delete_parser.add_argument_group('required arguments')
-delete_required.add_argument('--vendor', dest="vendor", required=True, help='The vendor of the tool (e.g., synopsys, cadence)')
-delete_required.add_argument('--tool', '-t', dest="tool", required=True, help='The tool to delete (e.g., vcs, icc2)')
-delete_required.add_argument('--version', '-ver', dest="version", required=True, help='The version of the tool to delete (e.g., 2023.12)')
-delete_parser.add_argument('--sites', type=str, required=False, help='Comma-separated list of sites to delete the tool from. Valid values: aus, yyz. If not specified, deletes from all sites')
+# --- addlink subcommand (gated by disabled_subcommands in tool_defs.py) ---
+if 'addlink' not in disabled_subcommands:
+    addlink_parser = subparsers.add_parser('addlink', help='Create or update a symlink for a previously installed vendor/tool/version')
+    addlink_required = addlink_parser.add_argument_group('required arguments')
+    addlink_required.add_argument('--vendor', dest="vendor", required=True, help='The vendor of the tool (e.g., synopsys, cadence)')
+    addlink_required.add_argument('--tool', '-t', dest="tool", required=True, help='The tool (e.g., vcs, icc2)')
+    addlink_required.add_argument('--version', '-ver', dest="version", required=True, help='The version to point the symlink to (e.g., 2023.12). Must be an existing version in the tool directory')
+    addlink_required.add_argument('--link', '-l', dest="link", required=True, help='The name of the symlink to create (e.g., latest)')
+    addlink_parser.add_argument('--sites', type=str, required=False, help='Comma-separated list of sites. Valid values: aus, yyz. If not specified, applies to all sites')
+
+# --- delete subcommand (gated by disabled_subcommands in tool_defs.py) ---
+if 'delete' not in disabled_subcommands:
+    delete_parser = subparsers.add_parser('delete', help='Delete a previously installed vendor/tool/version')
+    delete_required = delete_parser.add_argument_group('required arguments')
+    delete_required.add_argument('--vendor', dest="vendor", required=True, help='The vendor of the tool (e.g., synopsys, cadence)')
+    delete_required.add_argument('--tool', '-t', dest="tool", required=True, help='The tool to delete (e.g., vcs, icc2)')
+    delete_required.add_argument('--version', '-ver', dest="version", required=True, help='The version of the tool to delete (e.g., 2023.12)')
+    delete_parser.add_argument('--sites', type=str, required=False, help='Comma-separated list of sites to delete the tool from. Valid values: aus, yyz. If not specified, deletes from all sites')
 
 args = parser.parse_args()
 
@@ -124,7 +146,10 @@ if not args.subcommand:
     print("Error: No subcommand provided.")
     print("\nAvailable subcommands:")
     print("  install    Install a tool from a vendor")
-    print("  delete     Delete a previously installed vendor/tool/version")
+    if 'addlink' not in disabled_subcommands:
+        print("  addlink    Create or update a symlink for a previously installed version")
+    if 'delete' not in disabled_subcommands:
+        print("  delete     Delete a previously installed vendor/tool/version")
     print("\nFor detailed help on a specific subcommand, use:")
     print("  cadinstall.py <subcommand> --help")
     print("\nFor general help, use:")
@@ -291,7 +316,118 @@ def main():
             logger.info("replication before expecting the installation to be available locally.")
             logger.info("="*80)
 
+    elif args.subcommand == 'addlink':
+        if 'addlink' in disabled_subcommands:
+            logger.error("The 'addlink' subcommand is currently disabled.")
+            sys.exit(1)
+
+        vendor = args.vendor
+        tool = args.tool
+        version = args.version
+        link = args.link
+
+        # Validate that version is a plain directory name — reject anything that
+        # looks like an absolute or relative path to prevent linking outside the
+        # tool directory tree.
+        path_component_re = re.compile(r'^(?!\.+$)[A-Za-z0-9][A-Za-z0-9._-]*$')
+        for label, value in [('vendor', vendor), ('tool', tool), ('version', version), ('link', link)]:
+            if not value or not path_component_re.match(value):
+                logger.error("Invalid %s value: '%s'. Must be a plain directory name "
+                             "(no slashes, no dots-only, no whitespace)." % (label, value))
+                sys.exit(1)
+
+        # Handle sites argument
+        if hasattr(args, 'sites') and args.sites:
+            sitesList = args.sites.split(",")
+
+            invalid_sites = [site for site in sitesList if site not in siteHash]
+            if invalid_sites:
+                valid_sites = ', '.join(sorted(siteHash.keys()))
+                logger.error("Invalid site(s) specified: %s" % ', '.join(invalid_sites))
+                logger.error("Valid sites are: %s" % valid_sites)
+                sys.exit(1)
+        else:
+            command = "/usr/bin/dnsdomainname"
+            process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            domain = process.stdout.read().decode('utf-8').rstrip().split('.')[0]
+            domain = domain[:3]
+
+            for site in siteHash:
+                if site != domain:
+                    sitesList.append(site)
+
+            if domain in siteHash:
+                sitesList.insert(0, domain)
+
+        if link == version:
+            logger.error("The --link name '%s' is the same as --version. "
+                         "The symlink cannot point to itself." % link)
+            sys.exit(1)
+
+        for site in sitesList:
+            dest_host = siteHash[site]
+            version_dir = "%s/%s/%s/%s" % (dest, vendor, tool, version)
+            link_path = "%s/%s/%s/%s" % (dest, vendor, tool, link)
+            is_local = (check_same_host(dest_host) == 0)
+
+            if lib.my_globals.get_pretend():
+                logger.info("Pretend mode: would verify version directory exists: %s on %s" % (version_dir, dest_host))
+                logger.info("Pretend mode: would verify link name is not an existing directory: %s on %s" % (link_path, dest_host))
+            else:
+                # Verify the version directory exists on the target host
+                if is_local:
+                    test_command = "/bin/test -d %s" % version_dir
+                else:
+                    test_command = "/usr/bin/ssh %s /bin/test -d %s" % (dest_host, version_dir)
+
+                test_status = run_command(test_command)
+                if test_status != 0:
+                    logger.error("Version directory does not exist: %s on %s" % (version_dir, dest_host))
+                    logger.error("The --version must refer to an already-installed version.")
+                    sys.exit(1)
+
+                # Verify the link name does not collide with an existing real
+                # directory (an existing symlink is fine — we'll overwrite it).
+                # "test -d X && ! test -L X" is true only for real directories.
+                if is_local:
+                    collision_command = "/bin/test -d %s && ! /bin/test -L %s" % (link_path, link_path)
+                else:
+                    collision_command = "/usr/bin/ssh %s '/bin/test -d %s && ! /bin/test -L %s'" % (dest_host, link_path, link_path)
+
+                collision_status = run_command(collision_command)
+                if collision_status == 0:
+                    logger.error("The link name '%s' conflicts with an existing installed version directory: %s on %s" % (link, link_path, dest_host))
+                    logger.error("A symlink cannot overwrite a real installation directory.")
+                    sys.exit(1)
+
+            # Check if the link already exists as a symlink so we can report
+            # whether this is a create or an update (and from which version).
+            old_target = None
+            if is_local:
+                readlink_command = "/bin/readlink %s" % link_path
+            else:
+                readlink_command = "/usr/bin/ssh %s /bin/readlink %s" % (dest_host, link_path)
+            rl_status, rl_output = run_command_with_output(readlink_command, force_run=True)
+            if rl_status == 0 and rl_output.strip():
+                old_target = rl_output.strip().lstrip('./')
+
+            if old_target and old_target != version:
+                logger.info("Updating symlink '%s' from version '%s' to '%s' in %s/%s/%s on %s ..." % (link, old_target, version, dest, vendor, tool, site))
+            elif old_target and old_target == version:
+                logger.info("Symlink '%s' already points to '%s' in %s/%s/%s on %s, re-creating ..." % (link, version, dest, vendor, tool, site))
+            else:
+                logger.info("Creating symlink '%s' -> '%s' in %s/%s/%s on %s ..." % (link, version, dest, vendor, tool, site))
+
+            status = create_link(dest, vendor, tool, version, link, dest_host)
+            if status != 0:
+                logger.error("Failed to create symlink on %s" % site)
+                sys.exit(1)
+
     elif args.subcommand == 'delete':
+        if 'delete' in disabled_subcommands:
+            logger.error("The 'delete' subcommand is currently disabled.")
+            sys.exit(1)
+
         vendor = args.vendor
         tool = args.tool
         version = args.version
