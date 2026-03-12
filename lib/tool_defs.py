@@ -36,6 +36,12 @@ curl_cmd = curl + ' -X POST -L'
 jenkins_user = "bswan:11ce74b6c978b1484607c6c9168e085b44"
 jenkins_url = 'http://aus-rv-l-7:8081'
 
+# Subcommands listed here are hidden and unavailable. Remove a subcommand from
+# this set to enable it.
+disabled_subcommands = {
+    'delete',
+}
+
 # Maximum time (in minutes) after installation during which a delete is allowed.
 # After this many minutes from the "Installed on" timestamp, the delete subcommand will refuse to run.
 delete_time_limit = 240  # 4 hours
