@@ -6,9 +6,10 @@ import logging
 def setup_custom_logger(name, log_file):
     formatter = logging.Formatter('-%(levelname)s- %(asctime)s : %(message)s')
 
-    ## Logfile handler
+    ## Logfile handler - captures DEBUG and above so that "Running command" details
+    ## are always recorded even when the console only shows INFO.
     file_handler = logging.FileHandler(log_file, mode='w')
-    file_handler.setLevel(logging.INFO)
+    file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
 
     # Console handler

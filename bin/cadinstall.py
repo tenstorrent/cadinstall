@@ -272,49 +272,80 @@ def main():
         else:
             logger.info("Disk space precheck passed for all sites: %s" % ', '.join(sites_with_space))
 
+        # Pre-validate ALL sites before starting any installation.
+        # This prevents partial installations where one site succeeds and another fails.
+        final_dest = "%s/%s/%s/%s" % (dest, vendor, tool, version)
         for site in sitesList:
             dest_host = siteHash[site]
-            final_dest = "%s/%s/%s/%s" % (dest, vendor, tool, version)
-            
-            # Check module permissions BEFORE starting installation to prevent incomplete installations
+            other_sites = [s for s in sitesList if s != site]
+
+            # Check that the destination does not already exist
+            if check_dest(final_dest, dest_host):
+                logger.error("Aborting installation to ALL sites. No changes have been made.")
+                if other_sites:
+                    logger.error("To install only to the other site(s), rerun with: --sites %s" % ','.join(other_sites))
+                sys.exit(1)
+
+            if not check_install_permissions(final_dest, dest_host):
+                logger.error("Insufficient permissions to install %s on %s." % (final_dest, site))
+                logger.error("Aborting installation to ALL sites. No changes have been made.")
+                if other_sites:
+                    logger.error("To install only to the other site(s), rerun with: --sites %s" % ','.join(other_sites))
+                sys.exit(1)
+
             if not (hasattr(args, 'skip_modules') and args.skip_modules):
                 if not check_module_permissions(vendor, tool, dest_host):
                     logger.error("Insufficient permissions for module file installation on %s." % site)
-                    logger.error("Use --skip-modules flag to skip module installation and continue.")
+                    logger.error("Aborting installation to ALL sites. No changes have been made.")
+                    if other_sites:
+                        logger.error("To install only to the other site(s), rerun with: --sites %s" % ','.join(other_sites))
+                    logger.error("Or use --skip-modules flag to skip module installation and continue.")
                     sys.exit(1)
+
+        logger.info("Prechecks passed for all sites: %s" % ', '.join(sitesList))
+
+        if lib.my_globals.get_pretend():
+            logger.info("")
+            logger.info("="*80)
+            logger.info("PRETEND MODE: All prechecks passed. No files were copied or modified.")
+            logger.info("To perform the actual installation, rerun without the '--pretend' switch.")
+            logger.info("="*80)
+        else:
+            for site in sitesList:
+                dest_host = siteHash[site]
+                
+                logger.info("Installing %s to %s ..." %(final_dest,site))
+                install_tool(vendor, tool, version, src, group, dest_host, final_dest)
+
+                if hasattr(args, 'link') and args.link:
+                    create_link(dest, vendor, tool, version, args.link, dest_host)
+
+                # Install module files unless --skip-modules was specified
+                if not (hasattr(args, 'skip_modules') and args.skip_modules):
+                    module_status = install_module_files(vendor, tool, version, dest_host)
+                    if module_status != 0:
+                        logger.error("Module file installation failed for %s. Use --skip-modules to bypass." % site)
+                        sys.exit(1)
+                else:
+                    logger.info("Skipping module file installation (--skip-modules specified)")
+
+                # Now that one site is done, change the source to the installed site so that we are ensuring all sites are equivalent
+                # But don't do this if the final_dest is on tmp because that won't be accessible
+                if not re.search("^/tmp", final_dest):
+                    src = final_dest
             
-            logger.info("Installing %s to %s ..." %(final_dest,site))
-            install_tool(vendor, tool, version, src, group, dest_host, final_dest)
-
-            if hasattr(args, 'link') and args.link:
-                create_link(dest, vendor, tool, version, args.link, dest_host)
-
-            # Install module files unless --skip-modules was specified
-            if not (hasattr(args, 'skip_modules') and args.skip_modules):
-                module_status = install_module_files(vendor, tool, version, dest_host)
-                if module_status != 0:
-                    logger.error("Module file installation failed for %s. Use --skip-modules to bypass." % site)
-                    sys.exit(1)
-            else:
-                logger.info("Skipping module file installation (--skip-modules specified)")
-
-            # Now that one site is done, change the source to the installed site so that we are ensuring all sites are equivalent
-            # But don't do this if the final_dest is on tmp because that won't be accessible
-            if not re.search("^/tmp", final_dest):
-                src = final_dest
-        
-        # Check if installation was only to yyz2-nfspublish (Pure filesystem replication)
-        unique_hosts = set([siteHash[site] for site in sitesList])
-        if len(unique_hosts) == 1 and 'yyz2-nfspublish.yyz2.tenstorrent.com' in unique_hosts:
-            logger.info("")
-            logger.info("="*80)
-            logger.info("IMPORTANT: Installation completed to yyz2-nfspublish.yyz2.tenstorrent.com")
-            logger.info("This installation relies on Pure filesystem replication to propagate to other sites.")
-            logger.info("Replication can take up to 15 minutes before the installation is visible at other sites.")
-            logger.info("")
-            logger.info("If you are running from a non-YYZ site (e.g., AUS), please allow time for")
-            logger.info("replication before expecting the installation to be available locally.")
-            logger.info("="*80)
+            # Check if installation was only to yyz2-nfspublish (Pure filesystem replication)
+            unique_hosts = set([siteHash[site] for site in sitesList])
+            if len(unique_hosts) == 1 and 'yyz2-nfspublish.yyz2.tenstorrent.com' in unique_hosts:
+                logger.info("")
+                logger.info("="*80)
+                logger.info("IMPORTANT: Installation completed to yyz2-nfspublish.yyz2.tenstorrent.com")
+                logger.info("This installation relies on Pure filesystem replication to propagate to other sites.")
+                logger.info("Replication can take up to 15 minutes before the installation is visible at other sites.")
+                logger.info("")
+                logger.info("If you are running from a non-YYZ site (e.g., AUS), please allow time for")
+                logger.info("replication before expecting the installation to be available locally.")
+                logger.info("="*80)
 
     elif args.subcommand == 'addlink':
         if 'addlink' in disabled_subcommands:

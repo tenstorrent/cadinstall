@@ -24,10 +24,7 @@ def install_tool(vendor, tool, version, src, group, dest_host, dest):
     check_src(src)
 
     if check_dest(dest, dest_host):
-        if lib.my_globals.get_force():
-            logger.warn("Proceeding anyways because the '--force' switch was thrown")
-        else:
-            sys.exit(1)
+        sys.exit(1)
     
     logger.info("Copying %s/%s/%s to %s ..." % (vendor,tool,version,dest_host))
 
@@ -340,6 +337,50 @@ def create_link(dest, vendor, tool, version, link, dest_host):
 
     return(status)
 
+def check_install_permissions(dest, dest_host):
+    """
+    Check if we have write permissions to create the tool installation directory.
+    Walks up from the target path until an existing parent is found, then checks
+    that it is writable.
+
+    Args:
+        dest: The full destination path (e.g. /tools_vendor/FOSS/verilator/5.046)
+        dest_host: The host with write access to /tools_vendor (from siteHash)
+
+    Returns:
+        True if permissions are OK, False otherwise.
+    """
+    logger.info("Checking install directory permissions for %s on %s ..." % (dest, dest_host))
+
+    path_to_check = dest
+    while path_to_check != "/" and path_to_check != "":
+        if check_same_host(dest_host) == 0:
+            exists_command = "/bin/test -d %s" % path_to_check
+        else:
+            exists_command = "/usr/bin/ssh %s /bin/test -d %s" % (dest_host, path_to_check)
+
+        exists_status, _ = run_command_with_output(exists_command, force_run=True)
+
+        if exists_status == 0:
+            if check_same_host(dest_host) == 0:
+                write_command = "/bin/test -w %s" % path_to_check
+            else:
+                write_command = "/usr/bin/ssh %s /bin/test -w %s" % (dest_host, path_to_check)
+
+            write_status, _ = run_command_with_output(write_command, force_run=True)
+
+            if write_status != 0:
+                logger.error("No write permission to create install directory. Cannot write to: %s on %s" % (path_to_check, dest_host))
+                return False
+            else:
+                logger.info("Install directory permissions check passed - can write to: %s on %s" % (path_to_check, dest_host))
+                return True
+
+        path_to_check = os.path.dirname(path_to_check)
+
+    logger.error("Could not find any existing parent directory for install path: %s on %s" % (dest, dest_host))
+    return False
+
 def check_module_permissions(vendor, tool, dest_host):
     """
     Check if we have write permissions to create the vendor/tool module directory.
@@ -354,10 +395,6 @@ def check_module_permissions(vendor, tool, dest_host):
     """
     logger.info("Checking module directory permissions for %s/%s on %s ..." % (vendor, tool, dest_host))
     
-    if lib.my_globals.get_pretend():
-        logger.info("Pretend mode: Skipping actual permissions check")
-        return True
-    
     # Build the full path that needs to be created
     vendor_tool_path = "%s/%s/%s" % (module_path, vendor, tool)
     
@@ -366,24 +403,20 @@ def check_module_permissions(vendor, tool, dest_host):
     while path_to_check != "/" and path_to_check != "":
         # Check if this directory exists
         if check_same_host(dest_host) == 0:
-            # Same host - run command locally
             exists_command = "/bin/test -d %s" % path_to_check
         else:
-            # Different host - use SSH
             exists_command = "/usr/bin/ssh %s /bin/test -d %s" % (dest_host, path_to_check)
         
-        exists_status = run_command(exists_command)
+        exists_status, _ = run_command_with_output(exists_command, force_run=True)
         
         if exists_status == 0:
             # This directory exists, check if it's writable
             if check_same_host(dest_host) == 0:
-                # Same host - run command locally
                 write_command = "/bin/test -w %s" % path_to_check
             else:
-                # Different host - use SSH
                 write_command = "/usr/bin/ssh %s /bin/test -w %s" % (dest_host, path_to_check)
             
-            write_status = run_command(write_command)
+            write_status, _ = run_command_with_output(write_command, force_run=True)
             
             if write_status != 0:
                 logger.error("No write permission to create module directory structure. Cannot write to: %s on %s" % (path_to_check, dest_host))

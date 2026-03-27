@@ -29,15 +29,15 @@ def run_command(command, pretend=False):
     if execution_mode == 'listener':
         if pretend:
             if lib.my_globals.get_vv():
-                logger.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
+                logger.debug("Because the '-p' switch was thrown, not actually running command: %s" % command)
             else:
-                logger.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
+                logger.debug("Because the '-p' switch was thrown, not actually running command: %s" % command)
             return 0
         else:
             if lib.my_globals.get_vv():
-                logger.info("Running command via listener: %s" % command)
+                logger.debug("Running command via listener: %s" % command)
             else:
-                logger.info("Running command: %s" % command)
+                logger.debug("Running command: %s" % command)
             
             exit_code, _ = send_command_to_listener(command)
             return exit_code
@@ -84,15 +84,15 @@ def run_command(command, pretend=False):
 
     if pretend:
         if lib.my_globals.get_vv():
-            logger.info("Because the '-p' switch was thrown, not actually running sudo_command: %s" % sudo_command)
+            logger.debug("Because the '-p' switch was thrown, not actually running sudo_command: %s" % sudo_command)
         else:
-            logger.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
+            logger.debug("Because the '-p' switch was thrown, not actually running command: %s" % command)
         return(0)
     else:
         if lib.my_globals.get_vv():
-            logger.info("Running sudo_command: %s" % sudo_command)
+            logger.debug("Running sudo_command: %s" % sudo_command)
         else:
-            logger.info("Running command: %s" % command)
+            logger.debug("Running command: %s" % command)
 
         from subprocess import PIPE, Popen
         return_code = 0
@@ -105,12 +105,12 @@ def run_command(command, pretend=False):
         process.wait()
         if process.returncode:
             return_code = process.returncode
-            logger.info("Return code: %s" % return_code)
+            logger.debug("Return code: %s" % return_code)
             
     return(return_code)    
 
 
-def run_command_with_output(command, pretend=False, log_stderr=True, force_run=False):
+def run_command_with_output(command, pretend=False, log_stderr=True, log_stdout=True, force_run=False):
     """
     Run a command through the setuid binary or listener and return both status and output.
     Similar to run_command() but captures and returns stdout.
@@ -119,6 +119,7 @@ def run_command_with_output(command, pretend=False, log_stderr=True, force_run=F
         command: Command to run
         pretend: If True, don't actually run the command (unless force_run is True)
         log_stderr: If True, log stderr output as errors (default True)
+        log_stdout: If True, log stdout output as info (default True)
         force_run: If True, run the command even in pretend mode (for read-only operations)
     """
     allowed_commands_file = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../etc/allowed_commands')
@@ -138,15 +139,15 @@ def run_command_with_output(command, pretend=False, log_stderr=True, force_run=F
     if execution_mode == 'listener':
         if pretend:
             if lib.my_globals.get_vv():
-                logger.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
+                logger.debug("Because the '-p' switch was thrown, not actually running command: %s" % command)
             else:
-                logger.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
+                logger.debug("Because the '-p' switch was thrown, not actually running command: %s" % command)
             return 0, ""
         else:
             if lib.my_globals.get_vv():
-                logger.info("Running command via listener: %s" % command)
+                logger.debug("Running command via listener: %s" % command)
             else:
-                logger.info("Running command: %s" % command)
+                logger.debug("Running command: %s" % command)
             
             exit_code, stdout_lines = send_command_to_listener(command)
             return exit_code, '\n'.join(stdout_lines)
@@ -165,15 +166,15 @@ def run_command_with_output(command, pretend=False, log_stderr=True, force_run=F
 
     if pretend:
         if lib.my_globals.get_vv():
-            logger.info("Because the '-p' switch was thrown, not actually running sudo_command: %s" % sudo_command)
+            logger.debug("Because the '-p' switch was thrown, not actually running sudo_command: %s" % sudo_command)
         else:
-            logger.info("Because the '-p' switch was thrown, not actually running command: %s" % command)
+            logger.debug("Because the '-p' switch was thrown, not actually running command: %s" % command)
         return(0, "")  # Return success and empty output for pretend mode
     else:
         if lib.my_globals.get_vv():
-            logger.info("Running sudo_command: %s" % sudo_command)
+            logger.debug("Running sudo_command: %s" % sudo_command)
         else:
-            logger.info("Running command: %s" % command)
+            logger.debug("Running command: %s" % command)
 
         from subprocess import PIPE, Popen
         return_code = 0
@@ -182,7 +183,8 @@ def run_command_with_output(command, pretend=False, log_stderr=True, force_run=F
         with Popen(sudo_command, shell=True, stdout=PIPE, stderr=PIPE, bufsize=1) as process:
             for line in process.stdout:
                 line_str = line.decode('utf-8').rstrip()
-                logger.info(line_str)
+                if log_stdout:
+                    logger.info(line_str)
                 stdout_lines.append(line_str)
             for line in process.stderr:
                 if log_stderr:
@@ -191,7 +193,7 @@ def run_command_with_output(command, pretend=False, log_stderr=True, force_run=F
         process.wait()
         if process.returncode:
             return_code = process.returncode
-            logger.info("Return code: %s" % return_code)
+            logger.debug("Return code: %s" % return_code)
             
         return(return_code, '\n'.join(stdout_lines))
 
@@ -216,6 +218,10 @@ def check_src(src):
     
 
 def check_dest(dest, host=None):
+    """
+    Check if the destination directory already exists.
+    Returns 1 if it exists, 0 if it does not.
+    """
     exists = 0
     if host:
         logger.info("Checking %s for %s ..." % (host, dest))
@@ -225,25 +231,18 @@ def check_dest(dest, host=None):
             # Same host - check locally
             if os.path.exists(dest):
                 logger.error("Destination directory already exists: %s" % dest)
-                exists=1
-                sys.exit(1)
+                exists = 1
         else:
             # Different host - use SSH through setuid binary
-            if lib.my_globals.get_pretend():
-                logger.info("Pretend mode: would check if destination exists on remote host %s: %s" % (host, dest))
-                # In pretend mode, assume destination doesn't exist to allow planning
-                exists = 0
-            else:
-                command = "/usr/bin/ssh %s /usr/bin/ls -ltrd %s" % (host, dest)
-                status, output = run_command_with_output(command)
-                if status == 0 and output.strip():
-                    logger.error("Destination directory already exists on %s : %s" % (host, dest))
-                    exists = 1
-                    sys.exit(1)
+            command = "/usr/bin/ssh %s /usr/bin/ls -ltrd %s" % (host, dest)
+            status, output = run_command_with_output(command, log_stderr=False, force_run=True)
+            if status == 0 and output.strip():
+                logger.error("Destination directory already exists on %s : %s" % (host, dest))
+                exists = 1
     else:
         if os.path.exists(dest):
             logger.error("Destination directory already exists: %s" % dest)
-            exists=1
+            exists = 1
 
     return(exists)
 
@@ -298,10 +297,7 @@ def get_directory_size(path):
         return 0
     
     try:
-        # Always calculate real size, even in pretend mode - this is important information
         command = "du -sb %s" % path
-        if lib.my_globals.get_pretend():
-            logger.info("Pretend mode: calculating actual size of %s for planning purposes" % path)
         
         process = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         output, error = process.communicate()
@@ -322,16 +318,13 @@ def get_available_space(path, host=None):
     try:
         if host and check_same_host(host) != 0:
             # Different host - use SSH to check disk space
-            if lib.my_globals.get_pretend():
-                logger.info("Pretend mode: calculating actual available space at %s on remote host %s for planning purposes" % (path, host))
-            
             # Check the path itself first, or walk up parent directories until we find one that exists
             current_path = path
             while current_path and current_path != '/':
                 command = "/usr/bin/ssh %s /usr/bin/df -B1 %s" % (host, current_path)
                 # Don't log stderr as error while probing for existing directories
                 # Force run even in pretend mode - disk space check is read-only
-                status, output = run_command_with_output(command, log_stderr=False, force_run=True)
+                status, output = run_command_with_output(command, log_stderr=False, log_stdout=False, force_run=True)
                 
                 if status == 0:
                     # Success! Found an existing path
@@ -357,10 +350,7 @@ def get_available_space(path, host=None):
             # If we get here, something went wrong
             return 0
         else:
-            # Local host - always calculate real available space, even in pretend mode
-            if lib.my_globals.get_pretend():
-                logger.info("Pretend mode: calculating actual available space at %s for planning purposes" % path)
-            
+            # Local host
             parent_path = os.path.dirname(path) if not os.path.exists(path) else path
             if not os.path.exists(parent_path):
                 # Find the closest existing parent directory to check space
@@ -405,11 +395,8 @@ def check_disk_space_precheck(src, sites_list, vendor, tool, version, dest_base)
         logger.error("Could not determine source directory size")
         return False, [], []
     
-    logger.info("Source directory size: %s" % format_bytes(src_size))
-    
     # Add 20% buffer for safety
     required_space = int(src_size * 1.2)
-    logger.info("Required space (with 20%% buffer): %s" % format_bytes(required_space))
     
     sites_with_space = []
     sites_without_space = []
@@ -422,15 +409,12 @@ def check_disk_space_precheck(src, sites_list, vendor, tool, version, dest_base)
         
         available_space = get_available_space(dest_path, dest_host)
         
-        logger.info("Site %s (%s): Available space: %s" % (site, dest_host, format_bytes(available_space)))
-        
         if available_space >= required_space:
             sites_with_space.append(site)
-            logger.info("Site %s: SUFFICIENT SPACE" % site)
+            logger.info("Site %s: SUFFICIENT SPACE. Needs: %s. Available: %s" % (site, format_bytes(required_space), format_bytes(available_space)))
         else:
             sites_without_space.append(site)
-            logger.error("Site %s: INSUFFICIENT SPACE (need %s, have %s)" % 
-                        (site, format_bytes(required_space), format_bytes(available_space)))
+            logger.error("Site %s: INSUFFICIENT SPACE. Needs: %s. Available: %s" % (site, format_bytes(required_space), format_bytes(available_space)))
     
     success = len(sites_without_space) == 0
     return success, sites_with_space, sites_without_space
