@@ -50,9 +50,6 @@ def install_tool(vendor, tool, version, src, group, dest_host, dest):
         logger.error("Something failed during the installation. Exiting ...")
         sys.exit(1)
 
-    # Always write metadata file, both for local and remote installations
-    write_metadata(dest, dest_host)
-
     return(status)
 
 def write_metadata(dest, dest_host):

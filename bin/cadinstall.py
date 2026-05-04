@@ -311,11 +311,14 @@ def main():
             logger.info("To perform the actual installation, rerun without the '--pretend' switch.")
             logger.info("="*80)
         else:
-            for site in sitesList:
+            for idx, site in enumerate(sitesList):
                 dest_host = siteHash[site]
                 
                 logger.info("Installing %s to %s ..." %(final_dest,site))
                 install_tool(vendor, tool, version, src, group, dest_host, final_dest)
+
+                if idx == 0:
+                    write_metadata(final_dest, dest_host)
 
                 if hasattr(args, 'link') and args.link:
                     create_link(dest, vendor, tool, version, args.link, dest_host)
