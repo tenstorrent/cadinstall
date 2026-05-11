@@ -39,7 +39,7 @@ jenkins_url = 'http://aus-rv-l-7:8081'
 # Subcommands listed here are hidden and unavailable. Remove a subcommand from
 # this set to enable it.
 disabled_subcommands = {
-    'delete',
+#    'delete',
 }
 
 # Maximum time (in minutes) after installation during which a delete is allowed.
