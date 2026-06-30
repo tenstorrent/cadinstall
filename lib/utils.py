@@ -7,6 +7,7 @@ import sys
 import subprocess
 import logging
 import lib.my_globals
+import lib.tool_defs
 from lib.executor import get_execution_mode, get_sudo_path, send_command_to_listener
 
 logger = logging.getLogger('cadinstall')
@@ -55,7 +56,8 @@ def run_command(command, pretend=False):
         if rsync_path_match:
             original_rsync_path = rsync_path_match.group(1)
             # The remote commands in rsync-path don't need .sudo wrapping
-            # The rsync connection itself is authenticated via SSH
+            # because rsync runs as cadtools via .sudo locally, and its
+            # internal SSH connection authenticates as cadtools on the remote host
             modified_rsync_path = original_rsync_path
             
             # Temporarily replace the rsync-path with a placeholder to avoid double processing
@@ -74,23 +76,29 @@ def run_command(command, pretend=False):
                 sudo_command = sudo_command.replace(allowed_command, sudo + ' ' + allowed_command)
     # Special handling for SSH commands to remote hosts
     elif command.startswith('/usr/bin/ssh '):
-        # This is an SSH command - only wrap the SSH command itself with .sudo
-        # The remote commands don't need .sudo wrapping because SSH authentication handles it
+        # Only wrap the SSH command itself with .sudo - the remote commands
+        # run as cadtools because SSH authenticates as cadtools after setreuid
         sudo_command = sudo_command.replace('/usr/bin/ssh', sudo + ' /usr/bin/ssh')
     else:
-        # Normal processing for non-remote rsync commands
+        # Normal processing for local commands
         for allowed_command in allowed_commands:
             sudo_command = sudo_command.replace(allowed_command, sudo + ' ' + allowed_command)
+
+    is_setuid = (sudo_command != command)
 
     if pretend:
         if lib.my_globals.get_vv():
             logger.debug("Because the '-p' switch was thrown, not actually running sudo_command: %s" % sudo_command)
+        elif is_setuid:
+            logger.debug("Because the '-p' switch was thrown, not actually running command (as %s): %s" % (lib.tool_defs.cadtools_user, command))
         else:
             logger.debug("Because the '-p' switch was thrown, not actually running command: %s" % command)
         return(0)
     else:
         if lib.my_globals.get_vv():
             logger.debug("Running sudo_command: %s" % sudo_command)
+        elif is_setuid:
+            logger.debug("Running command (as %s): %s" % (lib.tool_defs.cadtools_user, command))
         else:
             logger.debug("Running command: %s" % command)
 
@@ -157,22 +165,29 @@ def run_command_with_output(command, pretend=False, log_stderr=True, log_stdout=
     sudo_command = command
 
     # Apply .sudo replacement to allowed commands
-    # Special handling for SSH commands - only wrap the SSH command itself
+    # For SSH commands, only wrap SSH itself - remote commands run as cadtools
+    # because SSH authenticates as cadtools after setreuid
     if command.startswith('/usr/bin/ssh '):
         sudo_command = sudo_command.replace('/usr/bin/ssh', sudo + ' /usr/bin/ssh')
     else:
         for allowed_command in allowed_commands:
             sudo_command = sudo_command.replace(allowed_command, sudo + ' ' + allowed_command)
 
+    is_setuid = (sudo_command != command)
+
     if pretend:
         if lib.my_globals.get_vv():
             logger.debug("Because the '-p' switch was thrown, not actually running sudo_command: %s" % sudo_command)
+        elif is_setuid:
+            logger.debug("Because the '-p' switch was thrown, not actually running command (as %s): %s" % (lib.tool_defs.cadtools_user, command))
         else:
             logger.debug("Because the '-p' switch was thrown, not actually running command: %s" % command)
         return(0, "")  # Return success and empty output for pretend mode
     else:
         if lib.my_globals.get_vv():
             logger.debug("Running sudo_command: %s" % sudo_command)
+        elif is_setuid:
+            logger.debug("Running command (as %s): %s" % (lib.tool_defs.cadtools_user, command))
         else:
             logger.debug("Running command: %s" % command)
 
