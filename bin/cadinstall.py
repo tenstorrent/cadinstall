@@ -9,6 +9,7 @@ import pwd
 import grp
 import re
 import subprocess
+from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)) + '/..')
 import lib.log
@@ -313,12 +314,16 @@ def main():
         else:
             for idx, site in enumerate(sitesList):
                 dest_host = siteHash[site]
-                
+
+                # Establish the deletion metadata BEFORE anything is copied in.
+                # If the install is interrupted (network drop, ctrl-c, etc.) the
+                # metadata file still exists so the delete subcommand can act on
+                # it. The completion time is added once the install finishes.
+                install_started_on = datetime.now()
+                write_metadata(final_dest, dest_host, install_started_on)
+
                 logger.info("Installing %s to %s ..." %(final_dest,site))
                 install_tool(vendor, tool, version, src, group, dest_host, final_dest)
-
-                if idx == 0:
-                    write_metadata(final_dest, dest_host)
 
                 if hasattr(args, 'link') and args.link:
                     create_link(dest, vendor, tool, version, args.link, dest_host)
@@ -331,6 +336,10 @@ def main():
                         sys.exit(1)
                 else:
                     logger.info("Skipping module file installation (--skip-modules specified)")
+
+                # Installation finished for this site - record the completion
+                # time so the deletion policy uses "Install completed on".
+                write_metadata(final_dest, dest_host, install_started_on, completed_on=datetime.now())
 
                 # Now that one site is done, change the source to the installed site so that we are ensuring all sites are equivalent
                 # But don't do this if the final_dest is on tmp because that won't be accessible

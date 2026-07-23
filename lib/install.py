@@ -52,37 +52,77 @@ def install_tool(vendor, tool, version, src, group, dest_host, dest):
 
     return(status)
 
-def write_metadata(dest, dest_host):
+def _build_metadata_lines(user, started_on, completed_on=None):
+    """
+    Build the list of text lines that make up a .cadinstall.metadata file.
+
+    "Install started on" is recorded at the very beginning of an installation so
+    that even an interrupted install (network drop, ctrl-c, etc.) leaves behind a
+    metadata file the delete subcommand can act on. "Install completed on" is only
+    added once the installation has finished successfully.
+    """
+    lines = []
+    lines.append("Installed by: %s\n" % user)
+    lines.append("Install started on: %s\n" % started_on)
+    if completed_on is not None:
+        lines.append("Install completed on: %s\n" % completed_on)
+    ## get fully qualified hostname
+    lines.append("Installed from: %s\n" % socket.getfqdn())
+    ## get the logfile location
+    log_file = lib.my_globals.get_log_file()
+    if log_file:
+        lines.append("Logfile: %s\n" % log_file)
+    ## get the full command with resolved paths
+    full_command = lib.my_globals.get_full_command()
+    if full_command:
+        lines.append("Command: %s\n" % full_command)
+    return lines
+
+
+def write_metadata(dest, dest_host, started_on, completed_on=None):
     """
     Write installation metadata to the destination directory.
-    
+
+    This is called twice for each site:
+      * Once at the very beginning of the installation, before anything is
+        copied in (``completed_on`` is None). This establishes the deletion
+        policy up front so that an interrupted install can still be deleted.
+      * Once after the installation finishes successfully (``completed_on`` is
+        set) to record the completion time.
+
     Args:
-        dest: The destination directory path
-        dest_host: The host with write access to /tools_vendor (from siteHash)
+        dest:         The destination directory path
+        dest_host:    The host with write access to /tools_vendor (from siteHash)
+        started_on:   The datetime the install started. The same value is passed
+                      on both calls so the "Install started on" timestamp is
+                      preserved across the initial and completion writes.
+        completed_on: The datetime the install completed, or None for the
+                      initial write.
     """
     pid = os.getpid()
     user = getpass.getuser()
     metadata = ".cadinstall.metadata"
     tmp_metadata = "/tmp/%s.%s.%d" % (metadata, user, pid)
     dest_metadata = dest + "/" + metadata
-    
+
+    phase = "completion" if completed_on is not None else "initial"
+
     # Always create the temp file locally
     f = open(tmp_metadata, 'w')
-    f.write("Installed by: %s\n" % user)
-    f.write("Installed on: %s\n" % datetime.now())
-    ## get fully qualified hostname
-    f.write("Installed from: %s\n" % socket.getfqdn())
-    ## get the logfile location
-    log_file = lib.my_globals.get_log_file()
-    if log_file:
-        f.write("Logfile: %s\n" % log_file)
-    ## get the full command with resolved paths
-    full_command = lib.my_globals.get_full_command()
-    if full_command:
-        f.write("Command: %s\n" % full_command)
+    for line in _build_metadata_lines(user, started_on, completed_on):
+        f.write(line)
     f.close()
 
     os.system("/usr/bin/chmod 755 %s" % (tmp_metadata))
+
+    # Make sure the destination directory exists. On the initial write nothing
+    # has been copied in yet, so the directory will not exist. rsync of a single
+    # file will not create the parent directory for us.
+    if check_same_host(dest_host) == 0:
+        mkdir_command = "%s -p %s" % (mkdir, dest)
+    else:
+        mkdir_command = "/usr/bin/ssh %s %s -p %s" % (dest_host, mkdir, dest)
+    run_command(mkdir_command)
 
     # Copy to destination - use local rsync if same host, SSH rsync if different host
     if check_same_host(dest_host) == 0:
@@ -97,9 +137,9 @@ def write_metadata(dest, dest_host):
     os.remove(tmp_metadata)
     
     if status == 0:
-        logger.info("Created metadata file: %s on %s" % (dest_metadata, dest_host))
+        logger.info("Wrote %s metadata file: %s on %s" % (phase, dest_metadata, dest_host))
     else:
-        logger.warning("Failed to create metadata file: %s on %s" % (dest_metadata, dest_host))
+        logger.warning("Failed to write %s metadata file: %s on %s" % (phase, dest_metadata, dest_host))
 
 def delete_tool(vendor, tool, version, dest_host, dest):
     """
@@ -204,12 +244,35 @@ def delete_tool(vendor, tool, version, dest_host, dest):
 
     # Parse key fields from the metadata file
     installed_by = None
-    installed_on = None
+    install_started_on = None
+    install_completed_on = None
+    legacy_installed_on = None
     for line in metadata_contents.splitlines():
         if line.startswith("Installed by:"):
             installed_by = line.split(":", 1)[1].strip()
+        elif line.startswith("Install started on:"):
+            install_started_on = line.split(":", 1)[1].strip()
+        elif line.startswith("Install completed on:"):
+            install_completed_on = line.split(":", 1)[1].strip()
         elif line.startswith("Installed on:"):
-            installed_on = line.split(":", 1)[1].strip()
+            # Legacy metadata format (pre HWINFRA-938) used a single
+            # "Installed on" timestamp. Keep reading it as a fallback so that
+            # tools installed with the old format can still be deleted.
+            legacy_installed_on = line.split(":", 1)[1].strip()
+
+    # Deletion policy timestamp: prefer the completion time (a fully completed
+    # install). If only the start time exists the install was interrupted, so
+    # base the policy on when it started. Fall back to the legacy timestamp for
+    # metadata written before this field was split.
+    if install_completed_on:
+        installed_on = install_completed_on
+        install_time_label = "Install completed on"
+    elif install_started_on:
+        installed_on = install_started_on
+        install_time_label = "Install started on"
+    else:
+        installed_on = legacy_installed_on
+        install_time_label = "Installed on"
 
     # ------------------------------------------------------------------ #
     # 4. Verify the current user is the one who performed the install    #
@@ -255,7 +318,7 @@ def delete_tool(vendor, tool, version, dest_host, dest):
 
     if elapsed_minutes > delete_time_limit:
         logger.error("Deletion time window has expired.")
-        logger.error("Installed on       : %s" % installed_on)
+        logger.error("%-19s: %s" % (install_time_label, installed_on))
         logger.error("Current time       : %s" % datetime.now())
         logger.error("Elapsed            : %.1f minutes" % elapsed_minutes)
         logger.error("Allowed time limit : %d minutes" % delete_time_limit)

@@ -43,7 +43,10 @@ disabled_subcommands = {
 }
 
 # Maximum time (in minutes) after installation during which a delete is allowed.
-# After this many minutes from the "Installed on" timestamp, the delete subcommand will refuse to run.
+# The elapsed time is measured from the "Install completed on" timestamp when the
+# install finished, or the "Install started on" timestamp if the install was
+# interrupted before completing. After this many minutes the delete subcommand
+# will refuse to run.
 delete_time_limit = 240  # 4 hours
 
 ## Define the host per site that has /tools_vendor mounted with write access.
