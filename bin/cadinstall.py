@@ -319,7 +319,7 @@ def main():
                 # If the install is interrupted (network drop, ctrl-c, etc.) the
                 # metadata file still exists so the delete subcommand can act on
                 # it. The completion time is added once the install finishes.
-                install_started_on = datetime.now()
+                install_started_on = datetime.now().astimezone()
                 write_metadata(final_dest, dest_host, install_started_on)
 
                 logger.info("Installing %s to %s ..." %(final_dest,site))
@@ -339,7 +339,7 @@ def main():
 
                 # Installation finished for this site - record the completion
                 # time so the deletion policy uses "Install completed on".
-                write_metadata(final_dest, dest_host, install_started_on, completed_on=datetime.now())
+                write_metadata(final_dest, dest_host, install_started_on, completed_on=datetime.now().astimezone())
 
                 # Now that one site is done, change the source to the installed site so that we are ensuring all sites are equivalent
                 # But don't do this if the final_dest is on tmp because that won't be accessible

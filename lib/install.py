@@ -7,6 +7,7 @@ import lib.my_globals
 import getpass
 import socket
 import os
+import re
 from datetime import datetime
 
 
@@ -14,18 +15,58 @@ import logging
 import stat
 logger = logging.getLogger('cadinstall')
 
+# Format used for the "Install started on" / "Install completed on" timestamps
+# in the .cadinstall.metadata file. Timestamps are recorded in the local
+# timezone of the host running cadinstall; the numeric UTC offset (e.g. -0400)
+# makes them unambiguous and the trailing name (e.g. EDT) is for readability.
+METADATA_TIME_FORMAT = "%Y-%m-%d %H:%M:%S.%f %z (%Z)"
+
+
+def _format_metadata_time(dt):
+    """Format a timezone-aware datetime for the metadata file."""
+    return dt.strftime(METADATA_TIME_FORMAT)
+
+
+def _parse_metadata_time(value):
+    """
+    Parse a timestamp string read back from the metadata file into a datetime.
+
+    Handles the timezone-aware format written by cadinstall
+    ('YYYY-MM-DD HH:MM:SS.ffffff -0400 (EDT)') as well as legacy naive
+    timestamps ('YYYY-MM-DD HH:MM:SS[.ffffff]') written before timezone
+    information was recorded. Returns None if the value cannot be parsed.
+    """
+    if not value:
+        return None
+    # Strip a trailing human-readable timezone name annotation like "(EDT)";
+    # strptime handling of %Z is unreliable, so we parse the numeric offset only.
+    cleaned = re.sub(r'\s*\([^)]*\)\s*$', '', value).strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S.%f %z",
+                "%Y-%m-%d %H:%M:%S %z",
+                "%Y-%m-%d %H:%M:%S.%f",
+                "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.strptime(cleaned, fmt)
+        except ValueError:
+            continue
+    return None
+
 def install_tool(vendor, tool, version, src, group, dest_host, dest):
     """
     Install a tool to the specified destination.
     
     Args:
         dest_host: The host with write access to /tools_vendor (from siteHash)
+
+    Note:
+        The caller (install subcommand) validates that the destination does not
+        already exist for every site up front, before any installation begins.
+        The destination directory is also pre-created by write_metadata so the
+        deletion metadata is in place before anything is copied in, so this
+        function intentionally does not re-run check_dest here.
     """
     check_src(src)
 
-    if check_dest(dest, dest_host):
-        sys.exit(1)
-    
     logger.info("Copying %s/%s/%s to %s ..." % (vendor,tool,version,dest_host))
 
     # Use local rsync if same host, SSH rsync if different host
@@ -63,9 +104,9 @@ def _build_metadata_lines(user, started_on, completed_on=None):
     """
     lines = []
     lines.append("Installed by: %s\n" % user)
-    lines.append("Install started on: %s\n" % started_on)
+    lines.append("Install started on: %s\n" % _format_metadata_time(started_on))
     if completed_on is not None:
-        lines.append("Install completed on: %s\n" % completed_on)
+        lines.append("Install completed on: %s\n" % _format_metadata_time(completed_on))
     ## get fully qualified hostname
     lines.append("Installed from: %s\n" % socket.getfqdn())
     ## get the logfile location
@@ -301,25 +342,27 @@ def delete_tool(vendor, tool, version, dest_host, dest):
         logger.error("Deletion is not allowed.")
         sys.exit(1)
 
-    try:
-        install_time = datetime.strptime(installed_on, "%Y-%m-%d %H:%M:%S.%f")
-    except ValueError:
-        # Try without microseconds
-        try:
-            install_time = datetime.strptime(installed_on, "%Y-%m-%d %H:%M:%S")
-        except ValueError:
-            logger.error("Could not parse installation timestamp: '%s'" % installed_on)
-            logger.error("Deletion is not allowed.")
-            sys.exit(1)
+    install_time = _parse_metadata_time(installed_on)
+    if install_time is None:
+        logger.error("Could not parse installation timestamp: '%s'" % installed_on)
+        logger.error("Deletion is not allowed.")
+        sys.exit(1)
 
     from lib.tool_defs import delete_time_limit
-    elapsed = datetime.now() - install_time
+    # Compare against "now" in the same awareness as the stored timestamp:
+    # timezone-aware for current metadata, naive for legacy metadata.
+    if install_time.tzinfo is not None:
+        now = datetime.now(install_time.tzinfo)
+    else:
+        now = datetime.now()
+    elapsed = now - install_time
     elapsed_minutes = elapsed.total_seconds() / 60.0
 
     if elapsed_minutes > delete_time_limit:
+        now_display = _format_metadata_time(now) if now.tzinfo is not None else str(now)
         logger.error("Deletion time window has expired.")
         logger.error("%-19s: %s" % (install_time_label, installed_on))
-        logger.error("Current time       : %s" % datetime.now())
+        logger.error("Current time       : %s" % now_display)
         logger.error("Elapsed            : %.1f minutes" % elapsed_minutes)
         logger.error("Allowed time limit : %d minutes" % delete_time_limit)
         sys.exit(1)
