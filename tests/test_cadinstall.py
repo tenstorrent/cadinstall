@@ -145,6 +145,18 @@ class TestCadinstall(unittest.TestCase):
         self.assertEqual(sites_with_space, [])
         self.assertEqual(sites_without_space, ['aus', 'yyz'])
 
+    def test_dest_permissions_are_not_group_writable(self):
+        """Installed trees must be 2755 / cadtools, not umask 775 group-write."""
+        from tool_defs import dest_mode, dest_group, rsync_chmod, rsync_options
+
+        self.assertEqual(dest_mode, 0o2755)
+        self.assertEqual(format(dest_mode, 'o'), '2755')
+        self.assertEqual(dest_group, 'cadtools')
+        self.assertIn('a=rX', rsync_chmod)
+        self.assertIn('Dg+s', rsync_chmod)
+        self.assertNotIn('g+rx', rsync_options)
+        self.assertIn('--chmod=a=rX,u+w,Dg+s', rsync_options)
+
 
 if __name__ == '__main__':
     unittest.main()

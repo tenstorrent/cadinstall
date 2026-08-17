@@ -8,6 +8,7 @@ import getpass
 import socket
 import os
 import re
+import sys
 from datetime import datetime
 
 
@@ -51,6 +52,58 @@ def _parse_metadata_time(value):
             continue
     return None
 
+def dest_mode_octal():
+    """Octal permission string for dest directories, e.g. '2755'."""
+    return format(dest_mode, 'o')
+
+
+def ensure_dest_directory(path, dest_host):
+    """Create path if needed and set dest_mode (setgid + 755), not umask 775."""
+    mode = dest_mode_octal()
+    if check_same_host(dest_host) == 0:
+        mkdir_command = "%s -p %s" % (mkdir, path)
+        chmod_command = "/usr/bin/chmod %s %s" % (mode, path)
+    else:
+        mkdir_command = "/usr/bin/ssh %s %s -p %s" % (dest_host, mkdir, path)
+        chmod_command = "/usr/bin/ssh %s /usr/bin/chmod %s %s" % (dest_host, mode, path)
+
+    mkdir_status = run_command(mkdir_command)
+    if mkdir_status != 0:
+        logger.error("Failed to create directory: %s" % path)
+        sys.exit(1)
+
+    chmod_status = run_command(chmod_command)
+    if chmod_status != 0:
+        logger.warning(
+            "Could not chmod %s on %s; rsync --chmod will set destination modes"
+            % (mode, path)
+        )
+
+
+def apply_install_permissions(dest, dest_host, group):
+    """
+    Force installed tree to dest_mode directories, non-group-writable files,
+    and cadtools:dest_group ownership. rsync --chmod is the main control;
+    this pass covers mkdir-created dirs and any bits rsync left behind.
+    """
+    mode = dest_mode_octal()
+    if check_same_host(dest_host) == 0:
+        chmod_files = "/usr/bin/chmod -R a=rX,u+w %s" % dest
+        chmod_dirs = "/usr/bin/find %s -type d -exec /usr/bin/chmod %s {} +" % (dest, mode)
+        chown_cmd = "/usr/bin/chown -R %s:%s %s" % (cadtools_user, group, dest)
+    else:
+        chmod_files = "/usr/bin/ssh %s /usr/bin/chmod -R a=rX,u+w %s" % (dest_host, dest)
+        chmod_dirs = "/usr/bin/ssh %s /usr/bin/find %s -type d -exec /usr/bin/chmod %s {} +" % (
+            dest_host, dest, mode)
+        chown_cmd = "/usr/bin/ssh %s /usr/bin/chown -R %s:%s %s" % (
+            dest_host, cadtools_user, group, dest)
+
+    for command in (chmod_files, chmod_dirs, chown_cmd):
+        status = run_command(command)
+        if status != 0:
+            logger.warning("Could not fully apply install permissions with: %s" % command)
+
+
 def install_tool(vendor, tool, version, src, group, dest_host, dest):
     """
     Install a tool to the specified destination.
@@ -69,27 +122,47 @@ def install_tool(vendor, tool, version, src, group, dest_host, dest):
 
     logger.info("Copying %s/%s/%s to %s ..." % (vendor,tool,version,dest_host))
 
+    # Create the destination with dest_mode before rsync so umask 0002 cannot
+    # leave the version directory group-writable (775).
+    ensure_dest_directory(dest, dest_host)
+
     # Use local rsync if same host, SSH rsync if different host
     # Since /tools_vendor is only writable on specific hosts (siteHash), we must check the actual host
     if check_same_host(dest_host) == 0:
-        # Same host - create parent directories first, then use local rsync
-        parent_dir = os.path.dirname(dest)
-        mkdir_command = "%s -p %s" % (mkdir, parent_dir)
-        mkdir_status = run_command(mkdir_command)
-        if mkdir_status != 0:
-            logger.error("Failed to create parent directory: %s" % parent_dir)
-            sys.exit(1)
-        
-        command = "%s %s --groupmap=\"*:%s\" %s/ %s/" % (rsync, rsync_options, cadtools_group, src, dest)
+        command = (
+            "%s %s --chown=%s:%s --groupmap=\"*:%s\" %s/ %s/"
+            % (rsync, rsync_options, cadtools_user, group, group, src, dest)
+        )
     else:
-        # Different host - use SSH rsync
-        command = "%s %s --groupmap=\"*:%s\" --rsync-path=\'%s -p %s && %s\' %s/ %s:%s/" % (rsync, rsync_options, cadtools_group, mkdir, dest, rsync, src, dest_host, dest)
+        # Different host - use SSH rsync. chmod the dest dir that mkdir creates
+        # so it is 2755 rather than umask 775.
+        command = (
+            "%s %s --chown=%s:%s --groupmap=\"*:%s\" "
+            "--rsync-path=\'%s -p %s && /usr/bin/chmod %s %s && %s\' %s/ %s:%s/"
+            % (
+                rsync,
+                rsync_options,
+                cadtools_user,
+                group,
+                group,
+                mkdir,
+                dest,
+                dest_mode_octal(),
+                dest,
+                rsync,
+                src,
+                dest_host,
+                dest,
+            )
+        )
     
     status = run_command(command)
 
     if status != 0:
         logger.error("Something failed during the installation. Exiting ...")
         sys.exit(1)
+
+    apply_install_permissions(dest, dest_host, group)
 
     return(status)
 
@@ -159,11 +232,7 @@ def write_metadata(dest, dest_host, started_on, completed_on=None):
     # Make sure the destination directory exists. On the initial write nothing
     # has been copied in yet, so the directory will not exist. rsync of a single
     # file will not create the parent directory for us.
-    if check_same_host(dest_host) == 0:
-        mkdir_command = "%s -p %s" % (mkdir, dest)
-    else:
-        mkdir_command = "/usr/bin/ssh %s %s -p %s" % (dest_host, mkdir, dest)
-    run_command(mkdir_command)
+    ensure_dest_directory(dest, dest_host)
 
     # Copy to destination - use local rsync if same host, SSH rsync if different host
     if check_same_host(dest_host) == 0:

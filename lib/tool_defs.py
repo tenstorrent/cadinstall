@@ -20,7 +20,9 @@ cadtools_group = 'vendor_tools'
 #dest = '/tmp/tools_vendor'
 dest = '/tools_vendor'
 dest_group = 'cadtools'
-dest_mode = 2755
+# Directory mode: setgid + rwxr-xr-x. Must be octal so shell/rsync/os.chmod
+# all see 2755, not decimal 2755.
+dest_mode = 0o2755
 
 # Module file path
 module_path = '/tools_vendor/tt/Modules/modulefiles'
@@ -29,7 +31,11 @@ rsync = '/usr/bin/rsync'
 mkdir = '/usr/bin/mkdir'
 curl = '/usr/bin/curl'
 rsync_exclude_file = os.path.realpath(os.path.dirname(os.path.realpath(__file__)) + '/../etc/rsync_exclude_list.txt')
-rsync_options = "-av --chmod=u+rwx,g+rx,o=rx --exclude-from=%s" % (rsync_exclude_file)
+# Absolute chmod (not u+ / g+). Additive flags leave group-write from a 0002
+# umask (venv dirs 775 / files 664). a=rX clears write, then owner write is
+# restored; X keeps execute on dirs and already-executable files; Dg+s is setgid.
+rsync_chmod = "a=rX,u+w,Dg+s"
+rsync_options = "-av --chmod=%s --exclude-from=%s" % (rsync_chmod, rsync_exclude_file)
 
 # Set up the global variables for the jenkins job
 curl_cmd = curl + ' -X POST -L'
