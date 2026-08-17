@@ -157,6 +157,28 @@ class TestCadinstall(unittest.TestCase):
         self.assertNotIn('g+rx', rsync_options)
         self.assertIn('--chmod=a=rX,u+w,Dg+s', rsync_options)
 
+    def _rsync_command_from_install(self, same_host):
+        """Run install_tool with mocks and return the rsync command string."""
+        from lib.install import install_tool
+
+        with patch('lib.install.check_src'), \
+             patch('lib.install.ensure_dest_directory'), \
+             patch('lib.install.apply_install_permissions'), \
+             patch('lib.install.check_same_host', return_value=0 if same_host else 1), \
+             patch('lib.install.run_command', return_value=0) as mock_run:
+            install_tool(
+                'synopsys', 'test', 'test6', '/src', 'cadtools',
+                'yyz2-nfspublish.yyz2.tenstorrent.com',
+                '/tools_vendor/synopsys/test/test6')
+            return mock_run.call_args[0][0]
+
+    def test_install_rsync_uses_chown_without_groupmap(self):
+        """--chown and --groupmap cannot be combined (rsync 3.1.3)."""
+        for same_host in (True, False):
+            command = self._rsync_command_from_install(same_host)
+            self.assertIn('--chown=cadtools:cadtools', command)
+            self.assertNotIn('--groupmap', command)
+
 
 if __name__ == '__main__':
     unittest.main()

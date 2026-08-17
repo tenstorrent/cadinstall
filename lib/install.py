@@ -128,22 +128,23 @@ def install_tool(vendor, tool, version, src, group, dest_host, dest):
 
     # Use local rsync if same host, SSH rsync if different host
     # Since /tools_vendor is only writable on specific hosts (siteHash), we must check the actual host
+    # --chown sets owner and group. Do not also pass --groupmap: rsync 3.1.3
+    # rejects that combination ("--groupmap conflicts with prior --chown").
     if check_same_host(dest_host) == 0:
         command = (
-            "%s %s --chown=%s:%s --groupmap=\"*:%s\" %s/ %s/"
-            % (rsync, rsync_options, cadtools_user, group, group, src, dest)
+            "%s %s --chown=%s:%s %s/ %s/"
+            % (rsync, rsync_options, cadtools_user, group, src, dest)
         )
     else:
         # Different host - use SSH rsync. chmod the dest dir that mkdir creates
         # so it is 2755 rather than umask 775.
         command = (
-            "%s %s --chown=%s:%s --groupmap=\"*:%s\" "
+            "%s %s --chown=%s:%s "
             "--rsync-path=\'%s -p %s && /usr/bin/chmod %s %s && %s\' %s/ %s:%s/"
             % (
                 rsync,
                 rsync_options,
                 cadtools_user,
-                group,
                 group,
                 mkdir,
                 dest,
