@@ -118,7 +118,7 @@ install_required.add_argument('--version', '-ver', dest="version", required=True
 install_required.add_argument('--src', dest="src", required=True, help='The source directory of the tool installation files')
 install_parser.add_argument('--addlink', dest="link", required=False, help='The name of the symlink to create that will point to the new version created. Typically used for creating the \"latest\" symlink')
 install_parser.add_argument('--sites', type=str, required=False, help='Comma-separated list of sites to install the tool to. Valid values: aus, yyz. If not specified, installs to all sites')
-install_parser.add_argument('--group', dest="group", default=dest_group, help='The group to own the destination directory (default: %s)' % dest_group)
+install_parser.add_argument('--group', dest="group", default=dest_group, help='The group to own the destination directory, replacing the default from tool_defs (default: %s). Quote names that contain spaces, e.g. --group "domain users"' % dest_group)
 install_parser.add_argument('--skip-modules', dest="skip_modules", action='store_true', help='Skip module file installation (useful when permissions are insufficient)')
 
 # --- addlink subcommand (gated by disabled_subcommands in tool_defs.py) ---
@@ -235,10 +235,12 @@ def main():
                 # gets updated first which is probably what the user wants
                 sitesList.insert(0, domain)
         
+        # --group replaces dest_group from tool_defs.py (e.g. "domain users").
         if hasattr(args, 'group') and args.group:
             group = args.group
         else:
             group = dest_group
+        logger.info("Install group: %s" % group)
 
         # Validate required arguments
         if not vendor or not tool or not version or not src:

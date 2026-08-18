@@ -8,6 +8,7 @@ import getpass
 import socket
 import os
 import re
+import shlex
 import sys
 from datetime import datetime
 
@@ -57,6 +58,16 @@ def dest_mode_octal():
     return format(dest_mode, 'o')
 
 
+def shell_owner_group(user, group):
+    """
+    Quote user:group for a shell command.
+
+    --group can replace dest_group with a name that contains spaces
+    (e.g. "domain users"); without quoting, chown/rsync split on the space.
+    """
+    return shlex.quote("%s:%s" % (user, group))
+
+
 def ensure_dest_directory(path, dest_host):
     """Create path if needed and set dest_mode (setgid + 755), not umask 775."""
     mode = dest_mode_octal()
@@ -83,20 +94,23 @@ def ensure_dest_directory(path, dest_host):
 def apply_install_permissions(dest, dest_host, group):
     """
     Force installed tree to dest_mode directories, non-group-writable files,
-    and cadtools:dest_group ownership. rsync --chmod is the main control;
+    and cadtools:<group> ownership. rsync --chmod is the main control;
     this pass covers mkdir-created dirs and any bits rsync left behind.
     """
     mode = dest_mode_octal()
+    owner_group = shell_owner_group(cadtools_user, group)
     if check_same_host(dest_host) == 0:
         chmod_files = "/usr/bin/chmod -R a=rX,u+w %s" % dest
         chmod_dirs = "/usr/bin/find %s -type d -exec /usr/bin/chmod %s {} +" % (dest, mode)
-        chown_cmd = "/usr/bin/chown -R %s:%s %s" % (cadtools_user, group, dest)
+        chown_cmd = "/usr/bin/chown -R %s %s" % (owner_group, dest)
     else:
         chmod_files = "/usr/bin/ssh %s /usr/bin/chmod -R a=rX,u+w %s" % (dest_host, dest)
         chmod_dirs = "/usr/bin/ssh %s /usr/bin/find %s -type d -exec /usr/bin/chmod %s {} +" % (
             dest_host, dest, mode)
-        chown_cmd = "/usr/bin/ssh %s /usr/bin/chown -R %s:%s %s" % (
-            dest_host, cadtools_user, group, dest)
+        # Quote the remote command so a group with spaces survives ssh's
+        # remote-shell parsing after the local shell strips one quote layer.
+        remote_chown = "/usr/bin/chown -R %s %s" % (owner_group, dest)
+        chown_cmd = "/usr/bin/ssh %s %s" % (dest_host, shlex.quote(remote_chown))
 
     for command in (chmod_files, chmod_dirs, chown_cmd):
         status = run_command(command)
@@ -130,22 +144,23 @@ def install_tool(vendor, tool, version, src, group, dest_host, dest):
     # Since /tools_vendor is only writable on specific hosts (siteHash), we must check the actual host
     # --chown sets owner and group. Do not also pass --groupmap: rsync 3.1.3
     # rejects that combination ("--groupmap conflicts with prior --chown").
+    # Quote user:group so --group values like "domain users" stay one argument.
+    owner_group = shell_owner_group(cadtools_user, group)
     if check_same_host(dest_host) == 0:
         command = (
-            "%s %s --chown=%s:%s %s/ %s/"
-            % (rsync, rsync_options, cadtools_user, group, src, dest)
+            "%s %s --chown=%s %s/ %s/"
+            % (rsync, rsync_options, owner_group, src, dest)
         )
     else:
         # Different host - use SSH rsync. chmod the dest dir that mkdir creates
         # so it is 2755 rather than umask 775.
         command = (
-            "%s %s --chown=%s:%s "
+            "%s %s --chown=%s "
             "--rsync-path=\'%s -p %s && /usr/bin/chmod %s %s && %s\' %s/ %s:%s/"
             % (
                 rsync,
                 rsync_options,
-                cadtools_user,
-                group,
+                owner_group,
                 mkdir,
                 dest,
                 dest_mode_octal(),
