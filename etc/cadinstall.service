@@ -1,0 +1,24 @@
+# SPDX-FileCopyrightText: © 2025 Tenstorrent AI ULC
+# SPDX-License-Identifier: Apache-2.0
+#
+# systemd unit for the cadinstall listener daemon.
+# Install:
+#   sudo cp etc/cadinstall.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now cadinstall.service
+
+[Unit]
+Description=Cadinstall listener daemon
+After=network.target
+
+[Service]
+Type=simple
+User=cadtools
+ExecStart=/usr/bin/python3 /tools_vendor/FOSS/cadinstall/latest/bin/cadinstall_listener.py --config /tools_vendor/FOSS/cadinstall/latest/config/cadinstall.json
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target
