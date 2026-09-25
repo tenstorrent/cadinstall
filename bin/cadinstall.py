@@ -77,6 +77,9 @@ Examples:
   # Skip module file installation (useful when permissions are insufficient)
   cadinstall.py install --vendor synopsys --tool vcs --version 2023.12 --src /tmp/vcs_install --skip-modules
 
+  # Record release details in .cadinstall.metadata
+  cadinstall.py install --vendor synopsys --tool vcs --version 2023.12 --src /tmp/vcs_install --comment "triggered by alice; pipeline https://ci.example/job/1; notes https://wiki.example/release"
+
   # Dry run (pretend mode)
   cadinstall.py --pretend install --vendor synopsys --tool vcs --version 2023.12 --src /tmp/vcs_install
 """
@@ -120,6 +123,7 @@ install_parser.add_argument('--addlink', dest="link", required=False, help='The 
 install_parser.add_argument('--sites', type=str, required=False, help='Comma-separated list of sites to install the tool to. Valid values: aus, yyz. If not specified, installs to all sites')
 install_parser.add_argument('--group', dest="group", default=dest_group, help='The group to own the destination directory, replacing the default from tool_defs (default: %s). Quote names that contain spaces, e.g. --group "domain users"' % dest_group)
 install_parser.add_argument('--skip-modules', dest="skip_modules", action='store_true', help='Skip module file installation (useful when permissions are insufficient)')
+install_parser.add_argument('--comment', dest="comment", required=False, help='Release details recorded in .cadinstall.metadata (e.g. triggering user, pipeline URL, release notes link). Quote the value if it contains spaces')
 
 # --- addlink subcommand (gated by disabled_subcommands in tool_defs.py) ---
 if 'addlink' not in disabled_subcommands:
@@ -242,6 +246,10 @@ def main():
             group = dest_group
         logger.info("Install group: %s" % group)
 
+        comment = args.comment if hasattr(args, 'comment') and args.comment and args.comment.strip() else None
+        if comment:
+            logger.info("Install comment: %s" % comment)
+
         # Validate required arguments
         if not vendor or not tool or not version or not src:
             logger.error("Missing required arguments for install subcommand")
@@ -322,7 +330,7 @@ def main():
                 # metadata file still exists so the delete subcommand can act on
                 # it. The completion time is added once the install finishes.
                 install_started_on = datetime.now().astimezone()
-                write_metadata(final_dest, dest_host, install_started_on)
+                write_metadata(final_dest, dest_host, install_started_on, comment=comment)
 
                 logger.info("Installing %s to %s ..." %(final_dest,site))
                 install_tool(vendor, tool, version, src, group, dest_host, final_dest)
@@ -341,7 +349,7 @@ def main():
 
                 # Installation finished for this site - record the completion
                 # time so the deletion policy uses "Install completed on".
-                write_metadata(final_dest, dest_host, install_started_on, completed_on=datetime.now().astimezone())
+                write_metadata(final_dest, dest_host, install_started_on, completed_on=datetime.now().astimezone(), comment=comment)
 
                 # Now that one site is done, change the source to the installed site so that we are ensuring all sites are equivalent
                 # But don't do this if the final_dest is on tmp because that won't be accessible

@@ -219,5 +219,41 @@ class TestCadinstall(unittest.TestCase):
             self.assertIn("'", chown_cmds[0])
 
 
+    def test_metadata_records_comment(self):
+        """--comment release details are written into .cadinstall.metadata."""
+        from datetime import datetime, timezone
+        from lib.install import _build_metadata_lines
+
+        started = datetime(2026, 9, 22, 12, 0, 0, tzinfo=timezone.utc)
+        comment = (
+            "triggered by alice\n"
+            "pipeline: https://ci.example/job/1\n"
+            "notes: https://wiki.example/release"
+        )
+        with patch('lib.my_globals.get_log_file', return_value='/tmp/cadinstall.log'), \
+             patch('lib.my_globals.get_full_command', return_value='cadinstall.py install'), \
+             patch('lib.install.socket.getfqdn', return_value='host.example'):
+            lines = _build_metadata_lines('alice', started, comment=comment)
+
+        self.assertIn('Comment: triggered by alice\n', lines)
+        self.assertIn('Comment: pipeline: https://ci.example/job/1\n', lines)
+        self.assertIn('Comment: notes: https://wiki.example/release\n', lines)
+
+    def test_metadata_omits_blank_comment(self):
+        """A missing or blank --comment does not add a Comment field."""
+        from datetime import datetime, timezone
+        from lib.install import _build_metadata_lines
+
+        started = datetime(2026, 9, 22, 12, 0, 0, tzinfo=timezone.utc)
+        with patch('lib.my_globals.get_log_file', return_value=None), \
+             patch('lib.my_globals.get_full_command', return_value=None), \
+             patch('lib.install.socket.getfqdn', return_value='host.example'):
+            omitted = _build_metadata_lines('alice', started)
+            blank = _build_metadata_lines('alice', started, comment='  \n\t  ')
+
+        for lines in (omitted, blank):
+            self.assertFalse(any(line.startswith('Comment:') for line in lines))
+
+
 if __name__ == '__main__':
     unittest.main()

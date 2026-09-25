@@ -182,14 +182,33 @@ def install_tool(vendor, tool, version, src, group, dest_host, dest):
 
     return(status)
 
-def _build_metadata_lines(user, started_on, completed_on=None):
+def _comment_metadata_lines(comment):
+    """
+    Turn a --comment value into metadata lines.
+
+    Each non-blank line is written as its own "Comment:" entry so a multi-line
+    note (triggering user, pipeline URL, release notes link, and so on) stays
+    readable and cannot be mistaken for another metadata field.
+    """
+    if comment is None:
+        return []
+    lines = []
+    for line in str(comment).splitlines():
+        text = line.strip()
+        if text:
+            lines.append("Comment: %s\n" % text)
+    return lines
+
+
+def _build_metadata_lines(user, started_on, completed_on=None, comment=None):
     """
     Build the list of text lines that make up a .cadinstall.metadata file.
 
     "Install started on" is recorded at the very beginning of an installation so
     that even an interrupted install (network drop, ctrl-c, etc.) leaves behind a
     metadata file the delete subcommand can act on. "Install completed on" is only
-    added once the installation has finished successfully.
+    added once the installation has finished successfully. An optional comment
+    records release details supplied with --comment.
     """
     lines = []
     lines.append("Installed by: %s\n" % user)
@@ -206,10 +225,11 @@ def _build_metadata_lines(user, started_on, completed_on=None):
     full_command = lib.my_globals.get_full_command()
     if full_command:
         lines.append("Command: %s\n" % full_command)
+    lines.extend(_comment_metadata_lines(comment))
     return lines
 
 
-def write_metadata(dest, dest_host, started_on, completed_on=None):
+def write_metadata(dest, dest_host, started_on, completed_on=None, comment=None):
     """
     Write installation metadata to the destination directory.
 
@@ -228,6 +248,9 @@ def write_metadata(dest, dest_host, started_on, completed_on=None):
                       preserved across the initial and completion writes.
         completed_on: The datetime the install completed, or None for the
                       initial write.
+        comment:      Optional release details from --comment. Written on both
+                      the initial and completion metadata files. Blank values
+                      are omitted.
     """
     pid = os.getpid()
     user = getpass.getuser()
@@ -239,7 +262,7 @@ def write_metadata(dest, dest_host, started_on, completed_on=None):
 
     # Always create the temp file locally
     f = open(tmp_metadata, 'w')
-    for line in _build_metadata_lines(user, started_on, completed_on):
+    for line in _build_metadata_lines(user, started_on, completed_on, comment=comment):
         f.write(line)
     f.close()
 
