@@ -23,10 +23,10 @@ from datetime import datetime
 
 # Set up argument parser
 parser = argparse.ArgumentParser(description='Cadinstall Listener Daemon')
-parser.add_argument('--config', default='/tools_vendor/FOSS/cadinstall/2.0/config/cadinstall.json',
+parser.add_argument('--config', default='/tools_vendor/FOSS/cadinstall/latest/config/cadinstall.json',
                     help='Path to configuration file')
 parser.add_argument('--logfile', help='Override log file from config')
-parser.add_argument('--host', help='Override host from config')
+parser.add_argument('--bind', help='Override bind address from config')
 parser.add_argument('--port', type=int, help='Override port from config')
 args = parser.parse_args()
 
@@ -50,7 +50,9 @@ except Exception as e:
 
 # Get listener configuration
 listener_config = config.get('listener', {})
-HOST = args.host or listener_config.get('host', 'localhost')
+# 'host' is the address clients connect to; binding to it can resolve to a
+# loopback address (e.g. 127.0.1.1 via /etc/hosts), so bind separately.
+HOST = args.bind or listener_config.get('bind', '0.0.0.0')
 PORT = args.port or listener_config.get('port', 9876)
 LOG_FILE = args.logfile or listener_config.get('logfile', '/tmp/cadinstall_listener.log')
 CONFIGURED_USER = listener_config.get('user', 'cadtools')
