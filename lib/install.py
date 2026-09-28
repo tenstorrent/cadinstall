@@ -10,6 +10,7 @@ import os
 import re
 import shlex
 import sys
+import tempfile
 from datetime import datetime
 
 
@@ -251,22 +252,27 @@ def write_metadata(dest, dest_host, started_on, completed_on=None, comment=None)
         comment:      Optional release details from --comment. Written on both
                       the initial and completion metadata files. Blank values
                       are omitted.
+
+    Returns:
+        The rsync exit status (0 on success).
     """
     pid = os.getpid()
     user = getpass.getuser()
     metadata = ".cadinstall.metadata"
-    tmp_metadata = "/tmp/%s.%s.%d" % (metadata, user, pid)
     dest_metadata = dest + "/" + metadata
 
     phase = "completion" if completed_on is not None else "initial"
 
-    # Always create the temp file locally
-    f = open(tmp_metadata, 'w')
-    for line in _build_metadata_lines(user, started_on, completed_on, comment=comment):
-        f.write(line)
-    f.close()
+    # The temp file is written by this process but copied by rsync, which may run
+    # outside this process's mount namespace (listener mode). Honor TMPDIR so a
+    # sandboxed caller with a private /tmp can point it at storage both can see.
+    fd, tmp_metadata = tempfile.mkstemp(
+        prefix="%s.%s.%d." % (metadata, user, pid), dir=tempfile.gettempdir())
+    with os.fdopen(fd, 'w') as f:
+        for line in _build_metadata_lines(user, started_on, completed_on, comment=comment):
+            f.write(line)
 
-    os.system("/usr/bin/chmod 755 %s" % (tmp_metadata))
+    os.chmod(tmp_metadata, 0o755)
 
     # Make sure the destination directory exists. On the initial write nothing
     # has been copied in yet, so the directory will not exist. rsync of a single
@@ -289,6 +295,8 @@ def write_metadata(dest, dest_host, started_on, completed_on=None, comment=None)
         logger.info("Wrote %s metadata file: %s on %s" % (phase, dest_metadata, dest_host))
     else:
         logger.warning("Failed to write %s metadata file: %s on %s" % (phase, dest_metadata, dest_host))
+
+    return status
 
 def delete_tool(vendor, tool, version, dest_host, dest):
     """

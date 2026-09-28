@@ -9,6 +9,7 @@ import pwd
 import grp
 import re
 import subprocess
+import tempfile
 from datetime import datetime
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)) + '/..')
@@ -58,7 +59,7 @@ def resolve_command_paths(argv):
 resolved_command = resolve_command_paths(sys.argv)
 lib.my_globals.set_full_command(resolved_command)
 
-log_file = '/tmp/cadinstall.%s.%d.log' % (user, os.getpid())
+log_file = os.path.join(tempfile.gettempdir(), 'cadinstall.%s.%d.log' % (user, os.getpid()))
 lib.my_globals.set_log_file(log_file)
 logger = lib.log.setup_custom_logger('cadinstall', log_file)
 
@@ -330,7 +331,13 @@ def main():
                 # metadata file still exists so the delete subcommand can act on
                 # it. The completion time is added once the install finishes.
                 install_started_on = datetime.now().astimezone()
-                write_metadata(final_dest, dest_host, install_started_on, comment=comment)
+                if write_metadata(final_dest, dest_host, install_started_on, comment=comment) != 0:
+                    logger.error("Could not write the initial metadata file to %s on %s. "
+                                 "Aborting before copying anything." % (final_dest, dest_host))
+                    logger.error("If TMPDIR is not visible to the listener host at the same path "
+                                 "(e.g. a sandbox with a private /tmp), point TMPDIR at shared storage.")
+                    logger.error("Then rerun with --force, since %s now exists." % final_dest)
+                    sys.exit(1)
 
                 logger.info("Installing %s to %s ..." %(final_dest,site))
                 install_tool(vendor, tool, version, src, group, dest_host, final_dest)

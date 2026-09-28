@@ -254,6 +254,48 @@ class TestCadinstall(unittest.TestCase):
         for lines in (omitted, blank):
             self.assertFalse(any(line.startswith('Comment:') for line in lines))
 
+    def test_write_metadata_honors_tmpdir(self):
+        """The temp metadata file lands in TMPDIR, not a hardcoded /tmp."""
+        import tempfile
+        from datetime import datetime, timezone
+        from lib.install import write_metadata
+
+        started = datetime(2026, 9, 22, 12, 0, 0, tzinfo=timezone.utc)
+        with tempfile.TemporaryDirectory() as shared_tmp, \
+             patch('lib.install.tempfile.gettempdir', return_value=shared_tmp), \
+             patch('lib.install.ensure_dest_directory'), \
+             patch('lib.install.check_same_host', return_value=1), \
+             patch('lib.install.run_command', return_value=0) as mock_run:
+            status = write_metadata('/tools_vendor/tt/x/1.0', 'remote.host', started)
+            command = mock_run.call_args[0][0]
+            self.assertEqual(os.listdir(shared_tmp), [])
+
+        self.assertEqual(status, 0)
+        self.assertIn(' %s/.cadinstall.metadata.' % shared_tmp, command)
+
+    def test_write_metadata_returns_failure_status(self):
+        """A failed copy is reported to the caller so the install can abort."""
+        from datetime import datetime, timezone
+        from lib.install import write_metadata
+
+        started = datetime(2026, 9, 22, 12, 0, 0, tzinfo=timezone.utc)
+        with patch('lib.install.ensure_dest_directory'), \
+             patch('lib.install.check_same_host', return_value=1), \
+             patch('lib.install.run_command', return_value=23):
+            self.assertEqual(write_metadata('/tools_vendor/tt/x/1.0', 'remote.host', started), 23)
+
+    def test_check_dest_force_overrides_existing(self):
+        """--force lets an install proceed over an existing destination."""
+        import lib.my_globals
+        from lib.utils import check_dest
+
+        with patch('lib.utils.check_same_host', return_value=1), \
+             patch('lib.utils.run_command_with_output', return_value=(0, 'drwxr-sr-x /dest')):
+            with patch('lib.my_globals.get_force', return_value=False):
+                self.assertEqual(check_dest('/dest', 'remote.host'), 1)
+            with patch('lib.my_globals.get_force', return_value=True):
+                self.assertEqual(check_dest('/dest', 'remote.host'), 0)
+
 
 if __name__ == '__main__':
     unittest.main()

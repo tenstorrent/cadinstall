@@ -235,7 +235,9 @@ def check_src(src):
 def check_dest(dest, host=None):
     """
     Check if the destination directory already exists.
-    Returns 1 if it exists, 0 if it does not.
+    Returns 1 if it exists, 0 if it does not. With --force an existing
+    destination is reported as a warning and 0 is returned so the install
+    proceeds over it.
     """
     exists = 0
     if host:
@@ -244,20 +246,23 @@ def check_dest(dest, host=None):
         # Use local check if same host, SSH if different host
         if check_same_host(host) == 0:
             # Same host - check locally
-            if os.path.exists(dest):
-                logger.error("Destination directory already exists: %s" % dest)
-                exists = 1
+            exists = 1 if os.path.exists(dest) else 0
         else:
             # Different host - use SSH through setuid binary
             command = "/usr/bin/ssh %s /usr/bin/ls -ltrd %s" % (host, dest)
             status, output = run_command_with_output(command, log_stderr=False, force_run=True)
-            if status == 0 and output.strip():
-                logger.error("Destination directory already exists on %s : %s" % (host, dest))
-                exists = 1
+            exists = 1 if status == 0 and output.strip() else 0
     else:
-        if os.path.exists(dest):
-            logger.error("Destination directory already exists: %s" % dest)
-            exists = 1
+        exists = 1 if os.path.exists(dest) else 0
+
+    if exists:
+        location = "on %s : %s" % (host, dest) if host else ": %s" % dest
+        if lib.my_globals.get_force():
+            logger.warning("Destination directory already exists %s (--force specified, installing over it)" % location)
+            exists = 0
+        else:
+            logger.error("Destination directory already exists %s" % location)
+            logger.error("Rerun with --force to install over it.")
 
     return(exists)
 
