@@ -1,0 +1,14 @@
+# Commands that may appear in <src>/.cadinstall.post-exec.sh.
+# A script line must be exactly one of these commands, then its arguments,
+# then one relative path under ./. The installer only knows how to safely
+# parse chown, chmod, and chgrp; any other entry here is a configuration error.
+#
+# Optional flag: -R
+# chown operand: <user> or <user>:<group>
+# chmod operand: 3 or 4 octal digits
+# chgrp operand: <group>
+# Path: ./ (the release itself), ./relative/path, or a glob such as ./*
+# A path containing .. is rejected. ./* cannot climb out of the release.
+sudo /usr/bin/chown
+sudo /usr/bin/chmod
+sudo /usr/bin/chgrp

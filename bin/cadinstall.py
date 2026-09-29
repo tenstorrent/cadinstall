@@ -19,6 +19,7 @@ from lib.tool_defs import *
 from lib.utils import *
 from lib.install import *
 from lib.executor import initialize_executor
+from lib.post_exec import validate_post_exec, execute_post_exec, PostExecError
 
 ## define the full path to this script
 script = os.path.realpath(__file__)
@@ -80,6 +81,14 @@ Examples:
 
   # Record release details in .cadinstall.metadata
   cadinstall.py install --vendor synopsys --tool vcs --version 2023.12 --src /tmp/vcs_install --comment "triggered by alice; pipeline https://ci.example/job/1; notes https://wiki.example/release"
+
+  # Optional <src>/.cadinstall.post-exec.sh is validated before anything is copied.
+  # It is not a shell script. Each line must be one of:
+  #   sudo /usr/bin/chown [-R] <user>[:<group>] ./relative/path
+  #   sudo /usr/bin/chmod [-R] <octal-mode> ./relative/path
+  #   sudo /usr/bin/chgrp [-R] <group> ./relative/path
+  # The path may be ./ or a glob such as ./*. It must stay inside the new
+  # release, so ./../* is rejected. The commands run after the copy.
 
   # Dry run (pretend mode)
   cadinstall.py --pretend install --vendor synopsys --tool vcs --version 2023.12 --src /tmp/vcs_install
@@ -257,6 +266,16 @@ def main():
             install_parser.print_help()
             sys.exit(1)
 
+        # Validate an optional post-exec script before any other precheck, and
+        # before anything is created. A bad script must fail here, not after
+        # the release has been copied.
+        try:
+            post_exec_plan = validate_post_exec(src)
+        except PostExecError as exc:
+            logger.error("Post-exec script precheck failed: %s" % exc)
+            logger.error("Aborting installation to ALL sites. No changes have been made.")
+            sys.exit(1)
+
         # Perform disk space precheck before starting installation
         from lib.utils import check_disk_space_precheck
         success, sites_with_space, sites_without_space = check_disk_space_precheck(
@@ -326,6 +345,8 @@ def main():
             logger.info("")
             logger.info("="*80)
             logger.info("PRETEND MODE: All prechecks passed. No files were copied or modified.")
+            if post_exec_plan:
+                logger.info("Post-exec would run %d command(s) after each release is copied." % len(post_exec_plan))
             logger.info("To perform the actual installation, rerun without the '--pretend' switch.")
             logger.info("="*80)
         else:
@@ -345,6 +366,19 @@ def main():
 
                 logger.info("Installing %s to %s ..." %(final_dest,site))
                 install_tool(vendor, tool, version, src, group, dest_host, final_dest)
+
+                # install_tool's permission pass rewrites ownership and mode on
+                # the whole tree, so post-exec has to run after that or the
+                # chown/chmod in the script would be undone. The plan was
+                # frozen during prechecks; nothing in the copied tree can
+                # change which commands run.
+                if post_exec_plan:
+                    try:
+                        execute_post_exec(post_exec_plan, final_dest, dest_host)
+                    except PostExecError as exc:
+                        logger.error("Post-exec failed on %s: %s" % (site, exc))
+                        logger.error("The release was copied, but post-exec did not finish.")
+                        sys.exit(1)
 
                 if hasattr(args, 'link') and args.link:
                     create_link(dest, vendor, tool, version, args.link, dest_host)
