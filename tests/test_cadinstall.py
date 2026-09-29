@@ -281,8 +281,78 @@ class TestCadinstall(unittest.TestCase):
         started = datetime(2026, 9, 22, 12, 0, 0, tzinfo=timezone.utc)
         with patch('lib.install.ensure_dest_directory'), \
              patch('lib.install.check_same_host', return_value=1), \
-             patch('lib.install.run_command', return_value=23):
+             patch('lib.install.run_command', side_effect=[0, 23]):
             self.assertEqual(write_metadata('/tools_vendor/tt/x/1.0', 'remote.host', started), 23)
+
+    def test_initial_metadata_does_not_precreate_version_dir(self):
+        """rsync creates the version dir, so a failed copy leaves nothing behind."""
+        from datetime import datetime, timezone
+        from lib.install import write_metadata
+
+        started = datetime(2026, 9, 22, 12, 0, 0, tzinfo=timezone.utc)
+        with patch('lib.install.ensure_dest_directory') as mock_ensure, \
+             patch('lib.install.check_same_host', return_value=1), \
+             patch('lib.install.run_command', side_effect=[0, 23]) as mock_run:
+            write_metadata('/tools_vendor/tt/x/1.0', 'remote.host', started)
+
+        mkdir_cmd, rsync_cmd = [call[0][0] for call in mock_run.call_args_list]
+        self.assertIn('-p /tools_vendor/tt/x', mkdir_cmd)
+        self.assertNotIn('/tools_vendor/tt/x/1.0', mkdir_cmd)
+        self.assertRegex(rsync_cmd, r'^/usr/bin/rsync -rptv \S+/1\.0 remote\.host:/tools_vendor/tt/x/$')
+        mock_ensure.assert_not_called()
+
+    def test_initial_metadata_applies_dest_mode_after_copy(self):
+        """Once rsync has created the version dir it gets dest_mode applied."""
+        from datetime import datetime, timezone
+        from lib.install import write_metadata
+
+        started = datetime(2026, 9, 22, 12, 0, 0, tzinfo=timezone.utc)
+        with patch('lib.install.ensure_dest_directory') as mock_ensure, \
+             patch('lib.install.check_same_host', return_value=1), \
+             patch('lib.install.run_command', return_value=0):
+            write_metadata('/tools_vendor/tt/x/1.0', 'remote.host', started)
+
+        mock_ensure.assert_called_once_with('/tools_vendor/tt/x/1.0', 'remote.host')
+
+    def test_completion_metadata_copies_file_only(self):
+        """The completion write copies just the file into the existing dir."""
+        from datetime import datetime, timezone
+        from lib.install import write_metadata
+
+        started = datetime(2026, 9, 22, 12, 0, 0, tzinfo=timezone.utc)
+        with patch('lib.install.ensure_dest_directory') as mock_ensure, \
+             patch('lib.install.check_same_host', return_value=1), \
+             patch('lib.install.run_command', return_value=0) as mock_run:
+            write_metadata('/tools_vendor/tt/x/1.0', 'remote.host', started, completed_on=started)
+
+        self.assertEqual(mock_run.call_count, 1)
+        self.assertRegex(mock_run.call_args[0][0],
+                         r'^/usr/bin/rsync -avp \S+/1\.0/\.cadinstall\.metadata '
+                         r'remote\.host:/tools_vendor/tt/x/1\.0/\.cadinstall\.metadata$')
+        mock_ensure.assert_not_called()
+
+    def test_check_tmpdir_access(self):
+        """The TMPDIR precheck runs in pretend mode and reports both requirements."""
+        import tempfile
+        from lib.install import check_tmpdir_access
+
+        with tempfile.TemporaryDirectory() as shared_tmp, \
+             patch('lib.install.tempfile.gettempdir', return_value=shared_tmp):
+            with patch('lib.install.run_command_with_output', return_value=(0, '')) as mock_run:
+                self.assertTrue(check_tmpdir_access())
+            command = mock_run.call_args[0][0]
+            self.assertTrue(command.startswith('/bin/test -r %s/.cadinstall.probe.' % shared_tmp))
+            self.assertTrue(mock_run.call_args[1]['force_run'])
+
+            with patch('lib.install.run_command_with_output', return_value=(1, '')), \
+                 patch('lib.install.logger') as mock_logger:
+                self.assertFalse(check_tmpdir_access())
+            errors = ' '.join(call[0][0] for call in mock_logger.error.call_args_list)
+            self.assertIn('visible to the listener host', errors)
+            self.assertIn('readable by', errors)
+            self.assertIn('every parent directory', errors)
+
+            self.assertEqual(os.listdir(shared_tmp), [])
 
     def test_check_dest_force_overrides_existing(self):
         """--force lets an install proceed over an existing destination."""

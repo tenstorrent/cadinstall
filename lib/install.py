@@ -9,6 +9,7 @@ import socket
 import os
 import re
 import shlex
+import shutil
 import sys
 import tempfile
 from datetime import datetime
@@ -255,6 +256,12 @@ def write_metadata(dest, dest_host, started_on, completed_on=None, comment=None)
 
     Returns:
         The rsync exit status (0 on success).
+
+    On the initial write the version directory is not created up front. The
+    metadata file is staged locally inside a directory named after the version
+    and that directory is rsynced into the tool directory, so rsync only creates
+    the version directory once it has read the local source. A TMPDIR that
+    cadtools cannot read therefore leaves nothing behind on the publish host.
     """
     pid = os.getpid()
     user = getpass.getuser()
@@ -262,41 +269,99 @@ def write_metadata(dest, dest_host, started_on, completed_on=None, comment=None)
     dest_metadata = dest + "/" + metadata
 
     phase = "completion" if completed_on is not None else "initial"
+    same_host = (check_same_host(dest_host) == 0)
+    remote_prefix = "" if same_host else "%s:" % dest_host
 
-    # The temp file is written by this process but copied by rsync, which may run
-    # outside this process's mount namespace (listener mode). Honor TMPDIR so a
-    # sandboxed caller with a private /tmp can point it at storage both can see.
-    fd, tmp_metadata = tempfile.mkstemp(
-        prefix="%s.%s.%d." % (metadata, user, pid), dir=tempfile.gettempdir())
-    with os.fdopen(fd, 'w') as f:
-        for line in _build_metadata_lines(user, started_on, completed_on, comment=comment):
-            f.write(line)
+    # The staged file is written by this process but copied by rsync, which may
+    # run outside this process's mount namespace (listener mode). Honor TMPDIR so
+    # a sandboxed caller with a private /tmp can point it at storage both can see.
+    stage = tempfile.mkdtemp(prefix="%s.%s.%d." % (metadata, user, pid), dir=tempfile.gettempdir())
+    try:
+        os.chmod(stage, 0o755)
+        stage_version = os.path.join(stage, os.path.basename(dest.rstrip("/")))
+        os.mkdir(stage_version)
+        os.chmod(stage_version, 0o755)
+        tmp_metadata = os.path.join(stage_version, metadata)
+        with open(tmp_metadata, 'w') as f:
+            for line in _build_metadata_lines(user, started_on, completed_on, comment=comment):
+                f.write(line)
+        os.chmod(tmp_metadata, 0o755)
 
-    os.chmod(tmp_metadata, 0o755)
+        if completed_on is None:
+            # rsync will not create missing parents, so make sure the tool
+            # directory exists. The version directory itself is created by rsync.
+            parent = os.path.dirname(dest.rstrip("/"))
+            if same_host:
+                mkdir_command = "%s -p %s" % (mkdir, parent)
+            else:
+                mkdir_command = "/usr/bin/ssh %s %s -p %s" % (dest_host, mkdir, parent)
+            if run_command(mkdir_command) != 0:
+                logger.error("Failed to create directory: %s on %s" % (parent, dest_host))
+                return 1
 
-    # Make sure the destination directory exists. On the initial write nothing
-    # has been copied in yet, so the directory will not exist. rsync of a single
-    # file will not create the parent directory for us.
-    ensure_dest_directory(dest, dest_host)
+            # -rpt rather than -a: with --force the version directory may already
+            # exist and must keep its owner and group.
+            command = "/usr/bin/rsync -rptv %s %s%s/" % (stage_version, remote_prefix, parent)
+        else:
+            command = "/usr/bin/rsync -avp %s %s%s" % (tmp_metadata, remote_prefix, dest_metadata)
 
-    # Copy to destination - use local rsync if same host, SSH rsync if different host
-    if check_same_host(dest_host) == 0:
-        # Same host - use local rsync
-        command = "/usr/bin/rsync -avp %s %s" % (tmp_metadata, dest_metadata)
-    else:
-        # Different host - use SSH rsync
-        command = "/usr/bin/rsync -avp %s %s:%s" % (tmp_metadata, dest_host, dest_metadata)
-    
-    status = run_command(command)
+        status = run_command(command)
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
 
-    os.remove(tmp_metadata)
-    
+    if status == 0 and completed_on is None:
+        # Apply dest_mode (setgid + 755) to the version directory rsync created.
+        ensure_dest_directory(dest, dest_host)
+
     if status == 0:
         logger.info("Wrote %s metadata file: %s on %s" % (phase, dest_metadata, dest_host))
     else:
         logger.warning("Failed to write %s metadata file: %s on %s" % (phase, dest_metadata, dest_host))
 
     return status
+
+
+def log_tmpdir_requirements():
+    """Explain what TMPDIR must satisfy for the metadata copy to work."""
+    logger.error("TMPDIR (%s) must be:" % tempfile.gettempdir())
+    logger.error("  * visible to the listener host at the same path "
+                 "(a sandbox's private /tmp is not), and")
+    logger.error("  * readable by %s, including every parent directory "
+                 "(a mode 700 parent such as a private /localdev/<user> blocks it)." % cadtools_user)
+    logger.error("Point TMPDIR at shared storage that meets both requirements.")
+
+
+def check_tmpdir_access():
+    """
+    Precheck that cadtools can read a file this process writes to TMPDIR.
+
+    The metadata copy is run as cadtools (through the setuid binary, or by the
+    listener outside any sandbox), so write a probe file to TMPDIR and have
+    cadtools test it through the same execution path. Runs in pretend mode too.
+
+    Returns:
+        True if cadtools can read the probe file, False otherwise.
+    """
+    tmpdir = tempfile.gettempdir()
+    logger.info("Checking that %s can read files written to TMPDIR %s ..." % (cadtools_user, tmpdir))
+
+    fd, probe = tempfile.mkstemp(
+        prefix=".cadinstall.probe.%s.%d." % (getpass.getuser(), os.getpid()), dir=tmpdir)
+    try:
+        with os.fdopen(fd, 'w') as f:
+            f.write("cadinstall TMPDIR probe\n")
+        os.chmod(probe, 0o644)
+        status, _ = run_command_with_output("/bin/test -r %s" % probe, log_stderr=False, force_run=True)
+    finally:
+        os.remove(probe)
+
+    if status != 0:
+        logger.error("%s cannot read a file written to TMPDIR: %s" % (cadtools_user, probe))
+        log_tmpdir_requirements()
+        return False
+
+    logger.info("TMPDIR check passed - %s can read files in %s" % (cadtools_user, tmpdir))
+    return True
 
 def delete_tool(vendor, tool, version, dest_host, dest):
     """

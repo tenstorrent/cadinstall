@@ -284,6 +284,12 @@ def main():
         else:
             logger.info("Disk space precheck passed for all sites: %s" % ', '.join(sites_with_space))
 
+        # The metadata file is staged in TMPDIR and copied as cadtools, so make
+        # sure cadtools can read it before anything is created on a publish host.
+        if not check_tmpdir_access():
+            logger.error("Aborting installation to ALL sites. No changes have been made.")
+            sys.exit(1)
+
         # Pre-validate ALL sites before starting any installation.
         # This prevents partial installations where one site succeeds and another fails.
         final_dest = "%s/%s/%s/%s" % (dest, vendor, tool, version)
@@ -334,9 +340,7 @@ def main():
                 if write_metadata(final_dest, dest_host, install_started_on, comment=comment) != 0:
                     logger.error("Could not write the initial metadata file to %s on %s. "
                                  "Aborting before copying anything." % (final_dest, dest_host))
-                    logger.error("If TMPDIR is not visible to the listener host at the same path "
-                                 "(e.g. a sandbox with a private /tmp), point TMPDIR at shared storage.")
-                    logger.error("Then rerun with --force, since %s now exists." % final_dest)
+                    log_tmpdir_requirements()
                     sys.exit(1)
 
                 logger.info("Installing %s to %s ..." %(final_dest,site))
